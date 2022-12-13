@@ -25,7 +25,12 @@ import {
     TextureLoader,
     LuminanceFormat,
     UnsignedByteType,
+    UniformsLib,
+    ShaderLib,
 } from './three.module.js';
+
+import * as BufferGeometryUtils from './BufferGeometryUtils.js'
+import * as UniformsUtils from './UniformsUtils.js'
 
 import { Perlin } from './Perlin.js';
 
@@ -35,14 +40,16 @@ class Planet {
     static loadedFragmentShader;
 
     settings = {
-        radius : 2, 
         minimalCentre : 1,
         resolution : 4, 
         debug : false,
+        noiseStrength : 1,
         noiseLayers : 3,
         roughness : 1,
-        persistence : 1,
+        persistence : 1.5,
         weightMultiplicator : 1,
+        waterLevelOffset : .1,
+        hasWater : true,
     };
 
     #perlin;
@@ -51,7 +58,6 @@ class Planet {
      * 
      * @param {Scene} scene 
      * @param {Object} options
-     * @param {Number} options.radius
      * @param {Number} options.minimalCentre
      * @param {Number} options.resolution
      * @param {Boolean} options.debug
@@ -59,6 +65,7 @@ class Planet {
      * @param {Number} options.roughness
      * @param {Number} options.persistence
      * @param {Number} options.weightMultiplicator
+     * @param {Number} options.noiseStrength
      */
     constructor (scene, options) {
 
@@ -77,30 +84,27 @@ class Planet {
             new Vector3(0, 0, -1),
         ];
 
-        /**
-         * @type {Vector3[]}
-         */
-        this.verticies = [];
-
-        /**
-         * @type {Vector3[]}
-         */
-        this.surfacePoints = [];
-
         this.minSurfacePoint = 0;
         this.maxSurfacePoint = 1;
 
+        /** @type {Mesh} */
+        this.CurrentMesh = null;
         this.Object = new Object3D();
 
         this.#perlin = new Perlin(Math.random());
 
-        console.log("gen planet", this);
-        
-        this.Object.attach(this.#GeneratePlanet());
-
     }
 
-    #GeneratePlanet () {
+    Generate () {
+
+        if(this.CurrentMesh != null) {
+
+            console.log("removed old planet from scene");
+
+            this.CurrentMesh.removeFromParent();
+            this.scene.remove(this.Object);
+
+        }
 
         this.minSurfacePoint = Number.MAX_SAFE_INTEGER;
         this.maxSurfacePoint = 0;
@@ -108,21 +112,32 @@ class Planet {
         //draw radius test line
         this.#drawDebugLine(
             new Vector3(),
-            new Vector3(1,1,1).normalize().multiplyScalar(this.settings.radius), 
+            new Vector3(1,1,1).normalize().multiplyScalar(this.settings.minimalCentre), 
             'yellow');
 
         let merged = [];
 
         for (let i = 0; i < this.DirectionsList.length; i++) {
             
-            let verts = this.#GenerateFace(this.DirectionsList[i]);
+            let verts = this.#generateFace(this.DirectionsList[i]);
 
             merged = [...merged, ...verts];
 
         }
 
-        let obj = this.Render(merged);
+        let obj = this.#render(merged);
+
+        this.Object.attach(obj);
+
+        console.log("gen planet", this);
+
         return obj;
+
+    }
+
+    OnTimeUpdate (_t) {
+
+        this.CurrentMesh.material.uniforms.time.value = _t;
 
     }
 
@@ -130,7 +145,7 @@ class Planet {
      * 
      * @param {Vector3} localUp 
      */
-    #GenerateFace (localUp) {
+    #generateFace (localUp) {
 
         let axisA = new Vector3(localUp.y, localUp.z, localUp.x);
         let axisB = new Vector3().crossVectors(localUp, axisA);
@@ -231,61 +246,154 @@ class Planet {
 
     }
 
-    Render (_verts) {
+    #render (_verts) {
 
         //mesh
-        const geometry = new BufferGeometry().setFromPoints(_verts);
+        let geometry = new BufferGeometry().setFromPoints(_verts);
         geometry.computeVertexNormals();
 
+        let uniforms = {
+            time: { type: "f", value: 1.0 },
+            waterColor : {type: 'vec3', value: new Color('rgb(0,0,255)')},
+            minWaterLevel : {type: 'float', value : this.minSurfacePoint + this.settings.waterLevelOffset},
+            texture1: {value: this.#generateTexture()},
+            elevationMinMax : {type: 'vec2', value: new Vector2(this.minSurfacePoint, this.maxSurfacePoint)},
+        };
+
+        const merged = UniformsUtils.mergeUniforms([
+            UniformsLib.lights,
+            UniformsLib.normalmap,
+            uniforms
+        ]);
+    
         const material = new ShaderMaterial ({
-            uniforms: {
-                color1 : {type: 'vec3', value: new Color('rgb(0,255,0)')},
-                color2 : {type: 'vec3', value: new Color('rgb(255,0,0)')},
-                texture1: {value: this.GenerateTexture()},
-                elevationMinMax : {type: 'vec2', value: new Vector2(this.minSurfacePoint, this.maxSurfacePoint)},
-            },
+            uniforms: merged,
             vertexShader: Planet.loadedVertexShader,
-            fragmentShader: Planet.loadedFragmentShader
+            fragmentShader: Planet.loadedFragmentShader,
+            lights: true
         });
 
-        let objRef = new Mesh(geometry, material);
+        this.CurrentMesh = new Mesh(geometry, material);
 
-        objRef.receiveShadow = true;
-        objRef.castShadow = true;
+        this.CurrentMesh.receiveShadow = true;
+        this.CurrentMesh.castShadow = true;
 
-        return objRef;
+        return this.CurrentMesh;
 
     }
 
-    GenerateTexture () {
+    #generateTexture () {
 
-        const width = 255;
-        const height = 255;
-        const data = new Uint8Array( 4 * width );
+        const width = 128 * 20;
 
-        for ( let i = 0; i < width * height; i ++ ) {
+        let colorPoints = [
+            {
+                position : 0,
+                r : 209,
+                g : 191,
+                b : 113
+            },
+            {
+                position : .4,
+                r : 0,
+                g : 255,
+                b : 0
+            },
+            {
+                position : .5,
+                r : 15,
+                g : 112,
+                b : 0
+            },
+            {
+                position : .85,
+                r : 100,
+                g : 100,
+                b : 100
+            },
+            {
+                position : .9,
+                r : 255,
+                g : 255,
+                b : 255
+            },
+            {
+                position : 1,
+                r : 255,
+                g : 255,
+                b : 255
+            },
+        ];
 
-            const stride = i * 4;
+        let generatedFade = [];
 
-            data[ stride ] = 0;
-            data[ stride + 1 ] = 0;
-            data[ stride + 2 ] = i;
-            data[ stride + 3 ] = 255;
+        for (let i = 0; i < colorPoints.length - 1; i++) {
+
+            let col = colorPoints[i];
+            let nextCol = colorPoints[i + 1];
+
+            const usePixelWidthA = Math.floor(width * (col.position));
+            const usePixelWidthB = Math.floor(width * (nextCol.position));
+            const pixelCount = Math.floor(usePixelWidthB - usePixelWidthA);
+
+            //console.log(`Writing pixel index from ${usePixelWidthA} to ${usePixelWidthB}, with count of ${pixelCount}`);
+
+            for (let j = usePixelWidthA; j < usePixelWidthB; j++) {
+
+                const perc = (j - usePixelWidthA) / pixelCount;
+
+                let v1 = new Vector3(col.r, col.g, col.b);
+                let v2 = new Vector3(nextCol.r, nextCol.g, nextCol.b);
+
+                //lerp values
+                let v3 = new Vector3().lerpVectors(v1, v2, perc);
+
+                generatedFade.push(Math.floor(v3.x));
+                generatedFade.push(Math.floor(v3.y));
+                generatedFade.push(Math.floor(v3.z));
+                generatedFade.push(255);
+
+            }
 
         }
 
-        const texture = new DataTexture(data, 100, 1);
-        texture.repeat = new Vector2(1,1);
+        var canv = document.createElement('canvas');
+        canv.width = width;
+        canv.height = 50;
+        canv.style = "position: fixed; z-index: 3; top: 0; left: 0;";
+        var ctx = canv.getContext("2d");
+        document.body.appendChild(canv);
+
+        console.log("text width ", width);
+
+        for (let i = 0; i < width; i++) {
+            
+            let stride = i * 4;
+
+            let r = generatedFade[stride];
+            let g = generatedFade[stride + 1];
+            let b = generatedFade[stride + 2];
+
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillRect(i, 0, 1, canv.height);
+
+        }
+
+        console.log("fade", generatedFade);
+
+        const data = Uint8Array.from(generatedFade);
+        const texture = new DataTexture(data, width, 1);
         texture.needsUpdate = true;
 
         const m = new MeshBasicMaterial({
             map: texture,
         });
 
-        const g = new PlaneGeometry(0, 0);
+
+        const planeSize = this.settings.minimalCentre / 2;
+        const g = new PlaneGeometry(planeSize, planeSize);
         const plane = new Mesh(g, m);
         plane.rotateY(180 * 0.0174533);
-        plane.translateY(3);
         this.scene.add(plane);
 
         return texture;
@@ -300,7 +408,7 @@ class Planet {
     #evaluateNoiseOnPoint (v) {
 
         let _freq = this.settings.roughness;
-        let _amp = 0.2;
+        let _amp = 1;
         let _noiseVal = 0;
         let _weight = 1;
 
@@ -327,9 +435,14 @@ class Planet {
 
         }
 
-        let final = Math.max(this.settings.minimalCentre, _noiseVal + this.settings.minimalCentre);
+        _noiseVal *= this.settings.noiseStrength;
+        _noiseVal += this.settings.minimalCentre;
 
-        return final;
+        if(this.settings.hasWater) {
+            return this.#clamp(_noiseVal, this.settings.minimalCentre + this.settings.waterLevelOffset, 100);
+        } else {
+            return this.#clamp(_noiseVal, this.settings.minimalCentre, 100);
+        }
 
     }
 
@@ -364,8 +477,16 @@ class Planet {
 
     }
 
-    Clamp (num, min, max) {
+    #clamp (num, min, max) {
+
         return Math.min(Math.max(num, min), max);
+
+    }
+
+    #lerp (x, y, t) {
+
+        return x * (1 - t) + y * t;
+
     }
 
 }
