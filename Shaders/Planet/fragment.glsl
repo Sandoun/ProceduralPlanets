@@ -28,10 +28,8 @@ uniform DirectionalLight directionalLights[NUM_DIR_LIGHTS];
 
 vec3 calcOwnShadow (in vec3 sDirection, in vec3 normV, in vec3 color) {
 
-  
-
   float shadingMin = -5.0;
-  float shadingMax = 1.0;
+  float shadingMax = 0.4;
   float intensity = -8.0;
   float intensityShadow = 10.0;
 
@@ -39,7 +37,12 @@ vec3 calcOwnShadow (in vec3 sDirection, in vec3 normV, in vec3 color) {
 
   vec3 lightDarkRatio = (color + intensity) - darkness;
 
-  return clamp(dot(sDirection,normV), shadingMin, shadingMax) * lightDarkRatio;
+  float dotProd = dot(sDirection,normV);
+
+  vec3 specLighting = vec3(0,1,0) * dotProd;
+  vec3 baseLighting = clamp(dotProd, shadingMin, shadingMax) * lightDarkRatio;
+
+  return baseLighting + specLighting;
 
 }
 
@@ -53,7 +56,11 @@ void main () {
   vec4 addedLights = vec4(0,0,0,1.0);
   #if NUM_DIR_LIGHTS > 0           
   for(int i = 0; i < NUM_DIR_LIGHTS; i++) {
-    addedLights.rgb += calcOwnShadow(directionalLights[i].direction, vecNormal, directionalLights[i].color);
+    addedLights.rgb += calcOwnShadow(
+      directionalLights[i].direction, 
+      vecNormal, 
+      directionalLights[i].color
+    );
   }
   #endif
 

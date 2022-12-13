@@ -1,6 +1,10 @@
 import * as THREE from './three.module.js';
+import { ShaderManager } from './ShaderLib/ShaderManager.js';
 import { OrbitControls } from './OrbitControls.js';
 import { Planet } from './PlanetGenerator.js';
+import { EffectComposer } from './Postprocessing/EffectComposer.js';
+import { RenderPass } from './Postprocessing/RenderPass.js';
+import { ShaderPass } from './Postprocessing/ShaderPass.js';
 import GUI from './lil-gui.esm.js';
 
 window.addEventListener( 'resize', onWindowResize, false );
@@ -11,8 +15,14 @@ let scene;
 let planet; 
 /** @type {THREE.WebGLRenderer} */
 let renderer;
+/** @type {THREE.WebGLRenderTarget} */
+let depthRenderTarget;
 /** @type {THREE.Camera} */
 let camera;
+/** @type {EffectComposer} */
+let composer;
+/** @type {ShaderPass} */
+let shaderPass;
 
 let startTime = Date.now();
 
@@ -32,7 +42,7 @@ let planetOptions = {
   //overall how many places with high areas should appear
   persistence : .4,
   noiseStrength : 1,
-  waterLevelOffset : .1,
+  waterLevelOffset : .15,
   hasWater : true,
   rotationSpeed : .5,
 
@@ -48,8 +58,7 @@ PreLoadFiles();
 
 async function PreLoadFiles () {
 
-  Planet.loadedFragmentShader = await readFile("../Shaders/PlanetGradient_fragment.glsl");
-  Planet.loadedVertexShader = await readFile("../Shaders/PlanetGradient_vertex.glsl");
+  await ShaderManager.LoadShaders();
 
   Main();
 
@@ -59,12 +68,12 @@ function Main () {
 
   SetupDebugUI();
 
-  scene = new THREE.Scene()
-  scene.background = new THREE.Color("rgb(20, 20, 20)");
+  SetupScene();
 
   SetupRenderer();
 
-  SetupCamera();
+  //debug controls
+  const controls = new OrbitControls( camera, renderer.domElement );
 
   BuildPlanet();
 
@@ -101,21 +110,48 @@ function SetupDebugUI () {
 
 }
 
-function SetupCamera () {
+function SetupScene () {
 
-  camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, .1, 100 );
-  
-  //debug controls
-  const controls = new OrbitControls( camera, renderer.domElement );
+  scene = new THREE.Scene()
+  scene.background = new THREE.Color("rgb(0, 0, 0)");
 
 }
 
+
 function SetupRenderer () {
 
-  renderer = new THREE.WebGLRenderer();
-  renderer.shadowMap.enabled = true;
+  const defaultRendererW = window.innerWidth;
+  const defaultRendererH = window.innerHeight;
+  const aspect = defaultRendererW / defaultRendererH;
 
-  renderer.setSize( window.innerWidth, window.innerHeight );
+  renderer = new THREE.WebGLRenderer();
+
+  camera = new THREE.PerspectiveCamera( 75, aspect, .1, 100 );
+
+  renderer.shadowMap.enabled = true;
+  renderer.setSize(defaultRendererW, defaultRendererH);
+
+  //depth render target
+  depthRenderTarget = new THREE.WebGLRenderTarget( defaultRendererW,  defaultRendererH );
+  depthRenderTarget.texture.format = THREE.RGBFormat;
+  depthRenderTarget.texture.minFilter = THREE.NearestFilter;
+  depthRenderTarget.texture.magFilter = THREE.NearestFilter;
+  depthRenderTarget.texture.generateMipmaps = false;
+  depthRenderTarget.stencilBuffer = false;
+  depthRenderTarget.depthBuffer = true;
+  depthRenderTarget.depthTexture = new THREE.DepthTexture();
+  depthRenderTarget.depthTexture.type = THREE.UnsignedShortType;
+
+  //post processing
+  composer = new EffectComposer(renderer);
+  composer.setSize(defaultRendererW, defaultRendererH);
+
+  const renderPass = new RenderPass( scene, camera );
+  composer.addPass( renderPass );
+
+  shaderPass = new ShaderPass(ShaderManager.PostProcessingShader());
+  composer.addPass(shaderPass);
+
   document.body.appendChild( renderer.domElement );
 
 }
@@ -137,12 +173,6 @@ function SetupLighting () {
   const cube = new THREE.Mesh( refCube, refMat );
   cube.position.set(planet.settings.minimalCentre * 2, planet.settings.minimalCentre * 2, planet.settings.minimalCentre * 2);
   scene.add( cube );
-
-  const litCube = new THREE.BoxGeometry(3,3,3);
-  const litMat = new THREE.MeshPhongMaterial( {color: 0x00ff00} );
-  const litC = new THREE.Mesh( litCube, litMat );
-  litC.position.set(20,20,20);
-  scene.add( litC );
 
 }
 
@@ -175,15 +205,29 @@ function RebuildPlanet () {
 
 function animate() {
 
+    requestAnimationFrame( animate );
+
     var elapsedMilliseconds = Date.now() - startTime;
     var elapsedSeconds = elapsedMilliseconds / 1000.;
     planet.OnTimeUpdate(60 * elapsedSeconds);
-
-    requestAnimationFrame( animate );
-
     planet.Object.rotation.y += planetOptions.rotationSpeed / 2000;
 
-    renderer.render( scene, camera );
+    if(shaderPass != null && camera != null) {
+
+      shaderPass.uniforms.worldSpaceCamPos.value = camera.getWorldPosition(new THREE.Vector3());
+      shaderPass.uniforms.viewVector.value = camera.getWorldDirection(new THREE.Vector3());
+      shaderPass.uniforms.cameraNear.value = camera.near * 5;
+      shaderPass.uniforms.cameraFar.value = camera.far;
+      shaderPass.uniforms.tDepth.value = depthRenderTarget.depthTexture;
+      
+    }
+      
+    //renderer.setRenderTarget( target );
+    renderer.setRenderTarget(depthRenderTarget);
+    renderer.render(scene, camera);
+    composer.render();
+
+    //renderer.render( scene, camera );
 
 };
 

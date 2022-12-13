@@ -28,7 +28,7 @@ import {
     UniformsLib,
     ShaderLib,
 } from './three.module.js';
-
+import { ShaderManager } from './ShaderLib/ShaderManager.js';
 import * as BufferGeometryUtils from './BufferGeometryUtils.js'
 import * as UniformsUtils from './UniformsUtils.js'
 
@@ -40,16 +40,31 @@ class Planet {
     static loadedFragmentShader;
 
     settings = {
-        minimalCentre : 1,
-        resolution : 4, 
+
         debug : false,
+        seed : '0123456',
+        minimalCentre : 15,
+        //mesh resolution
+        resolution : 300,
+        //increase detail
+        noiseLayers : 10,
+        weightMultiplicator : 2,
+        //how rought should the terrain look 
+        roughness : 3,
+        //overall how many places with high areas should appear
+        persistence : .4,
         noiseStrength : 1,
-        noiseLayers : 3,
-        roughness : 1,
-        persistence : 1.5,
-        weightMultiplicator : 1,
-        waterLevelOffset : .1,
+        //water
+        waterLevelOffset : .15,
         hasWater : true,
+        //atmosphere
+        atmosphereColor : 'rgb(0,0,255)',
+        atmosphereOpacity : 0.3,
+        atmosphereOffset : 0.1,
+        
+        //decide later
+        rotationSpeed : .5,
+
     };
 
     #perlin;
@@ -89,6 +104,10 @@ class Planet {
 
         /** @type {Mesh} */
         this.CurrentMesh = null;
+
+        /** @type {Mesh} */
+        this.AtmosMesh = null;
+
         this.Object = new Object3D();
 
         this.#perlin = new Perlin(Math.random());
@@ -125,13 +144,12 @@ class Planet {
 
         }
 
-        let obj = this.#render(merged);
+        this.#render(merged);
 
-        this.Object.attach(obj);
+        this.Object.attach(this.CurrentMesh);
+        this.Object.attach(this.AtmosMesh);
 
         console.log("gen planet", this);
-
-        return obj;
 
     }
 
@@ -248,37 +266,30 @@ class Planet {
 
     #render (_verts) {
 
-        //mesh
+        //mesh planet
         let geometry = new BufferGeometry().setFromPoints(_verts);
         geometry.computeVertexNormals();
 
-        let uniforms = {
-            time: { type: "f", value: 1.0 },
-            waterColor : {type: 'vec3', value: new Color('rgb(0,0,255)')},
-            minWaterLevel : {type: 'float', value : this.minSurfacePoint + this.settings.waterLevelOffset},
-            texture1: {value: this.#generateTexture()},
-            elevationMinMax : {type: 'vec2', value: new Vector2(this.minSurfacePoint, this.maxSurfacePoint)},
-        };
-
-        const merged = UniformsUtils.mergeUniforms([
-            UniformsLib.lights,
-            UniformsLib.normalmap,
-            uniforms
-        ]);
-    
-        const material = new ShaderMaterial ({
-            uniforms: merged,
-            vertexShader: Planet.loadedVertexShader,
-            fragmentShader: Planet.loadedFragmentShader,
-            lights: true
-        });
+        const material = ShaderManager.PlanetShaderMat(
+            this.#generateTexture(), 
+            this.minSurfacePoint, 
+            this.maxSurfacePoint, 
+            this.settings.waterLevelOffset
+        );
 
         this.CurrentMesh = new Mesh(geometry, material);
-
         this.CurrentMesh.receiveShadow = true;
         this.CurrentMesh.castShadow = true;
 
-        return this.CurrentMesh;
+        //mesh atmos
+        const subDivsX = this.#clamp(this.settings.resolution / 2, 32, 100);
+        const size = this.maxSurfacePoint + this.settings.atmosphereOffset;
+        const geometryAtm = new SphereGeometry(size, subDivsX, subDivsX);
+        const materialAtm = ShaderManager.AtmosphereShaderMat(
+            new Color(this.settings.atmosphereColor),
+            this.settings.atmosphereOpacity
+        );
+        this.AtmosMesh = new Mesh( geometryAtm, materialAtm );
 
     }
 
@@ -363,9 +374,6 @@ class Planet {
         canv.style = "position: fixed; z-index: 3; top: 0; left: 0;";
         var ctx = canv.getContext("2d");
         document.body.appendChild(canv);
-
-        console.log("text width ", width);
-
         for (let i = 0; i < width; i++) {
             
             let stride = i * 4;
@@ -378,8 +386,6 @@ class Planet {
             ctx.fillRect(i, 0, 1, canv.height);
 
         }
-
-        console.log("fade", generatedFade);
 
         const data = Uint8Array.from(generatedFade);
         const texture = new DataTexture(data, width, 1);

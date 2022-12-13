@@ -54,8 +54,8 @@ void main() {
   vec3 newPosition = position;
 
   //generate wave noise
-  float waveNoiseFrequ = .8;
-  float tWaveNoise = time / 500.0;
+  float waveNoiseFrequ = 20.0;
+  float tWaveNoise = time / 1000.0;
   genWaveNoise = clamp(pnoise( waveNoiseFrequ * (position +  tWaveNoise)), 0., 1.);
 
   //if water level
@@ -68,7 +68,7 @@ void main() {
     genWaterNoise = pnoise( frequ * (position +  tScale));
     float displacement = intensity * clamp(genWaterNoise, 0.0, 1.0);
 
-    newPosition = position + normal * displacement;
+    //newPosition = position + normal * displacement;
 
   }
 
