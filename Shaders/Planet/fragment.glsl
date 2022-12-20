@@ -29,8 +29,8 @@ uniform DirectionalLight directionalLights[NUM_DIR_LIGHTS];
 vec3 calcOwnShadow (in vec3 sDirection, in vec3 normV, in vec3 color) {
 
   float shadingMin = -5.0;
-  float shadingMax = 0.4;
-  float intensity = -8.0;
+  float shadingMax = .1;
+  float intensity = -3.0;
   float intensityShadow = 10.0;
 
   vec3 darkness = vec3(-1,-1,-1) * intensityShadow;

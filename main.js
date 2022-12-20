@@ -1,28 +1,27 @@
-import * as THREE from './three.module.js';
-import { ShaderManager } from './ShaderLib/ShaderManager.js';
-import { OrbitControls } from './OrbitControls.js';
-import { Planet } from './PlanetGenerator.js';
-import { EffectComposer } from './Postprocessing/EffectComposer.js';
-import { RenderPass } from './Postprocessing/RenderPass.js';
-import { ShaderPass } from './Postprocessing/ShaderPass.js';
-import GUI from './lil-gui.esm.js';
+import * as THREE from './Three/three.module.js';
+import { ShaderManager } from './SolarSystem/ShaderManager.js';
+import { OrbitControls } from './Three/OrbitControls.js';
+import { CelestialBody } from './SolarSystem/CelestialBody.js';
+import { EffectComposer } from './Three/Postprocessing/EffectComposer.js';
+import { RenderPass } from './Three/Postprocessing/RenderPass.js';
+import { ShaderPass } from './Three/Postprocessing/ShaderPass.js';
+import GUI from './Three/lil-gui.esm.js';
+import { SolarSystemRenderer } from './SolarSystem/SolarSystemRenderer.js';
 
 window.addEventListener( 'resize', onWindowResize, false );
 
 /** @type {THREE.Scene} */
 let scene; 
-/** @type {Planet} */
-let planet; 
 /** @type {THREE.WebGLRenderer} */
 let renderer;
-/** @type {THREE.WebGLRenderTarget} */
-let depthRenderTarget;
 /** @type {THREE.Camera} */
 let camera;
 /** @type {EffectComposer} */
 let composer;
 /** @type {ShaderPass} */
 let shaderPass;
+/** @type {SolarSystemRenderer} */
+let solarSystem;
 
 let startTime = Date.now();
 
@@ -42,7 +41,7 @@ let planetOptions = {
   //overall how many places with high areas should appear
   persistence : .4,
   noiseStrength : 1,
-  waterLevelOffset : .15,
+  waterLevelOffset : Math.random() * .3,
   hasWater : true,
   rotationSpeed : .5,
 
@@ -66,8 +65,6 @@ async function PreLoadFiles () {
 
 function Main () {
 
-  SetupDebugUI();
-
   SetupScene();
 
   SetupRenderer();
@@ -75,18 +72,15 @@ function Main () {
   //debug controls
   const controls = new OrbitControls( camera, renderer.domElement );
 
-  BuildPlanet();
-
   SetupLighting();
 
   RenderDebug();
+  
+  scene.addEventListener("")
+
+  solarSystem = new SolarSystemRenderer(renderer, scene, camera, composer);
 
   animate();
-
-  camera.position.x = planet.settings.minimalCentre + 5;
-  camera.position.y = planet.settings.minimalCentre + 5;
-  camera.position.z = -(planet.settings.minimalCentre + 5);
-  camera.lookAt(0,0,0);
 
 }
 
@@ -113,7 +107,7 @@ function SetupDebugUI () {
 function SetupScene () {
 
   scene = new THREE.Scene()
-  scene.background = new THREE.Color("rgb(0, 0, 0)");
+  scene.background = new THREE.Color("rgb(0, 0, 5)");
 
 }
 
@@ -125,14 +119,17 @@ function SetupRenderer () {
   const aspect = defaultRendererW / defaultRendererH;
 
   renderer = new THREE.WebGLRenderer();
-
-  camera = new THREE.PerspectiveCamera( 75, aspect, .1, 100 );
-
   renderer.shadowMap.enabled = true;
   renderer.setSize(defaultRendererW, defaultRendererH);
 
+  camera = new THREE.PerspectiveCamera( 75, aspect, .1, 1000 );
+  camera.position.x = 20;
+  camera.position.y = 20;
+  camera.position.z = -20;
+  camera.lookAt(0,0,0);
+
   //depth render target
-  depthRenderTarget = new THREE.WebGLRenderTarget( defaultRendererW,  defaultRendererH );
+  /* depthRenderTarget = new THREE.WebGLRenderTarget( defaultRendererW,  defaultRendererH );
   depthRenderTarget.texture.format = THREE.RGBFormat;
   depthRenderTarget.texture.minFilter = THREE.NearestFilter;
   depthRenderTarget.texture.magFilter = THREE.NearestFilter;
@@ -140,7 +137,7 @@ function SetupRenderer () {
   depthRenderTarget.stencilBuffer = false;
   depthRenderTarget.depthBuffer = true;
   depthRenderTarget.depthTexture = new THREE.DepthTexture();
-  depthRenderTarget.depthTexture.type = THREE.UnsignedShortType;
+  depthRenderTarget.depthTexture.type = THREE.UnsignedShortType; */
 
   //post processing
   composer = new EffectComposer(renderer);
@@ -149,8 +146,8 @@ function SetupRenderer () {
   const renderPass = new RenderPass( scene, camera );
   composer.addPass( renderPass );
 
-  shaderPass = new ShaderPass(ShaderManager.PostProcessingShader());
-  composer.addPass(shaderPass);
+  //shaderPass = new ShaderPass(ShaderManager.PostProcessingShader());
+  //composer.addPass(shaderPass);
 
   document.body.appendChild( renderer.domElement );
 
@@ -164,70 +161,36 @@ function SetupLighting () {
   //light
   const light = new THREE.DirectionalLight( 'rgb(0,0,0)', .3);
   light.castShadow = true;
-  light.position.set(planet.settings.minimalCentre * 2, planet.settings.minimalCentre * 2, planet.settings.minimalCentre * 2);
+  light.position.set(100, 100, 100);
   light.target = centerObj;
   scene.add( light );
 
   const refCube = new THREE.BoxGeometry(1,1,1);
   const refMat = new THREE.MeshBasicMaterial( {color: 0x00ff00} );
   const cube = new THREE.Mesh( refCube, refMat );
-  cube.position.set(planet.settings.minimalCentre * 2, planet.settings.minimalCentre * 2, planet.settings.minimalCentre * 2);
+  cube.position.set(100, 100, 100);
   scene.add( cube );
-
-}
-
-function BuildPlanet () {
-
-  planet = new Planet(scene);
-
-  RebuildPlanet();
-
-}
-
-function RebuildPlanet () {
-
-  planet.settings.debug = planetOptions.debug;
-  planet.settings.resolution = planetOptions.resolution;
-  planet.settings.noiseLayers = planetOptions.noiseLayers;
-  planet.settings.weightMultiplicator = planetOptions.weightMultiplicator;
-  planet.settings.roughness = planetOptions.roughness;
-  planet.settings.persistence = planetOptions.persistence;
-  planet.settings.minimalCentre = planetOptions.minimalCentre;
-  planet.settings.noiseStrength = planetOptions.noiseStrength;
-  planet.settings.waterLevelOffset = planetOptions.waterLevelOffset;
-  planet.settings.hasWater = planetOptions.hasWater;
-
-  planet.Generate();
-
-  scene.add(planet.Object);
 
 }
 
 function animate() {
 
-    requestAnimationFrame( animate );
+  requestAnimationFrame( animate );
 
-    var elapsedMilliseconds = Date.now() - startTime;
-    var elapsedSeconds = elapsedMilliseconds / 1000.;
-    planet.OnTimeUpdate(60 * elapsedSeconds);
-    planet.Object.rotation.y += planetOptions.rotationSpeed / 2000;
+  /* if(shaderPass != null && camera != null) {
 
-    if(shaderPass != null && camera != null) {
+    shaderPass.uniforms.worldSpaceCamPos.value = camera.getWorldPosition(new THREE.Vector3());
+    shaderPass.uniforms.IN_INV_PROJECTION_MATRIX.value = camera.projectionMatrixInverse;
+    shaderPass.uniforms.IN_INV_VIEW_MATRIX.value = camera.matrix;
+    shaderPass.uniforms.tDepth.value = depthRenderTarget.depthTexture;
+    
+  } */
+    
+  //renderer.setRenderTarget(depthRenderTarget);
 
-      shaderPass.uniforms.worldSpaceCamPos.value = camera.getWorldPosition(new THREE.Vector3());
-      shaderPass.uniforms.viewVector.value = camera.getWorldDirection(new THREE.Vector3());
-      shaderPass.uniforms.cameraNear.value = camera.near * 5;
-      shaderPass.uniforms.cameraFar.value = camera.far;
-      shaderPass.uniforms.tDepth.value = depthRenderTarget.depthTexture;
-      
-    }
-      
-    //renderer.setRenderTarget( target );
-    renderer.setRenderTarget(depthRenderTarget);
-    renderer.render(scene, camera);
-    composer.render();
-
-    //renderer.render( scene, camera );
+  solarSystem.OnAnimateLoop();
+  renderer.render(scene, camera);
+  composer.render();
 
 };
 
@@ -237,7 +200,7 @@ function RenderDebug () {
   //y is green
   // z is blue
   const axesHelper = new THREE.AxesHelper( 5 );
-  axesHelper.translateZ(planet.settings.minimalCentre + 10);
+  axesHelper.translateZ(50);
   scene.add( axesHelper );
 
 }
@@ -248,18 +211,8 @@ function onWindowResize(){
     camera.updateProjectionMatrix();
 
     renderer.setSize( window.innerWidth, window.innerHeight );
+    solarSystem.OnRendererSizeChange();
 
 }
-
-function readFile(file) {
-  return new Promise((resolve, reject) => {
-    fetch(file)
-    .then(response => response.text())
-    .then(text => {
-       resolve(text);
-    })
-  });
-}
-
 
 

@@ -3,12 +3,15 @@ import {
     Vector2,
     UniformsLib,
     ShaderMaterial,
-    Vector3
-} from '../three.module.js'
+    Vector3,
+    Matrix4
+} from '../Three/three.module.js'
 
-import * as UniformsUtils from '../UniformsUtils.js'
+import * as UniformsUtils from '../Three/UniformsUtils.js'
 
 class ShaderManager {
+
+    static loadedFiles = false;
 
     static glslData = {
         PlanetShader : {
@@ -21,11 +24,6 @@ class ShaderManager {
             fPath : "/Shaders/PostProcess/fragment.glsl",
             shader : null,
         },
-        AtmosphereShader : {
-            vPath : "/Shaders/Atmosphere/vertex.glsl",
-            fPath : "/Shaders/Atmosphere/fragment.glsl",
-            shader : null,
-        },
     };
 
     static async LoadShaders () {
@@ -35,6 +33,8 @@ class ShaderManager {
             value.shader = await GlslShader.LoadFromFiles(value.vPath, value.fPath);
 
         }
+
+        this.loadedFiles = true;
 
     }
 
@@ -61,46 +61,26 @@ class ShaderManager {
 
     }
 
-    static AtmosphereShaderMat (color, opacity) {
-
-        const merged = UniformsUtils.mergeUniforms([
-            UniformsLib.lights,
-            UniformsLib.normalmap,
-            {
-                time: { type: "f", value: 1.0 },
-                atmosColor : {type: 'vec3', value: color},
-                atmosOpacity : { type: "f", value: opacity}
-            }
-        ]);
-
-        return new ShaderMaterial ({
-            uniforms: merged,
-            vertexShader: ShaderManager.glslData.AtmosphereShader.shader.vertex,
-            fragmentShader: ShaderManager.glslData.AtmosphereShader.shader.fragment,
-            lights: true,
-            transparent : true
-        });
-
-    }
-
-    static PostProcessingShader () {
+    static PostProcessingShader (numBodies) {
 
         const merged = UniformsUtils.mergeUniforms([
             {
-                worldSpaceCamPos : {value : new Vector3(0,0,0)},
-                viewVector :  {value : new Vector3(0,0,0)},
+                IN_INV_PROJECTION_MATRIX : {value : new Matrix4()},
+                IN_INV_VIEW_MATRIX : {value : new Matrix4()},
                 tDiffuse : { value: null },
                 tDepth : { value: null },
-                cameraNear : { value : 0 },
-                cameraFar : { value : 0 },
-                opacity : { value: 1.0 }
+                worldSpaceCamPos : {value : new Vector3(0,0,0)},
+                shadeableBodies : {
+                    value : []
+                }
+
             }
         ]);
 
         return {
             uniforms: merged,
             vertexShader: ShaderManager.glslData.PPshader.shader.vertex,
-            fragmentShader: ShaderManager.glslData.PPshader.shader.fragment,
+            fragmentShader: ShaderManager.glslData.PPshader.shader.fragment.replace("#define NUM_BODIES 10", `#define NUM_BODIES ${numBodies}`),
         };
 
     }
