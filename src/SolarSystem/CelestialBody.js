@@ -31,6 +31,7 @@ import {
 
 import { ShaderManager } from './ShaderManager.js';
 import { Perlin } from './Perlin.js';
+import { Prando } from './Prando.js';
 
 class CelestialBody {
 
@@ -59,6 +60,11 @@ class CelestialBody {
      * @property {Number} atmosphere.scale Atmosphere scale 0 - 1
      * @property {Number} atmosphere.fallOff Atmosphere density falloff 4-40 work good, lower values mean more light spread around
      * @property {Number} atmosphere.instensity Atmosphere intensity
+     * @property {Object} biomes Biome settings
+     * @property {Number} biomes.noiseScale Noise size scale
+     * @property {Number} biomes.noiseFrequency Noise frequency
+     * @property {Number} biomes.blendingSize Size of the range for blending inbetween biomes
+     * @property {BiomeData[]} biomes.layers biome layer definitions
      */
 
     /** @type {CelestialSettings} */
@@ -86,6 +92,34 @@ class CelestialBody {
             scale : 1.0,
             fallOff : .25,
             instensity : 1,
+        },
+        biomes : {
+            noiseScale : .2,
+            noiseFrequency : .2,
+            blendingSize : 0.05,
+            layers : [
+                new BiomeData([
+                    new GradientColorPoint(209,191,113,0),
+                    new GradientColorPoint(0,50,0,.4),
+                    new GradientColorPoint(15,112,0,.5),
+                    new GradientColorPoint(100,100,100,.85),
+                    new GradientColorPoint(255,255,255,.9),
+                    new GradientColorPoint(255,255,255,1.0),
+                ], 0),
+                new BiomeData([
+                    new GradientColorPoint(218, 194, 124, 0),
+                    new GradientColorPoint(215, 175, 114, .3),
+                    new GradientColorPoint(168, 101, 30, 1.0),
+                ], .4),
+                new BiomeData([
+                    new GradientColorPoint(209,191,113,0),
+                    new GradientColorPoint(0,50,0,.4),
+                    new GradientColorPoint(15,112,0,.5),
+                    new GradientColorPoint(100,100,100,.85),
+                    new GradientColorPoint(255,255,255,.9),
+                    new GradientColorPoint(255,255,255,1.0),
+                ], .6),
+            ]
         }
     };
 
@@ -112,17 +146,18 @@ class CelestialBody {
         /** @type {Mesh} */
         this.CurrentMesh = null;
 
-        /** @type {Mesh} */
-        this.TextureMesh = null;
+        /** @type {Mesh[]} */
+        this.TextureMeshes = [];
 
         this.Object = new Object3D();
 
         this.#perlin = new Perlin(this.settings.seed);
 
-        console.log(this.settings);
+        console.log(this);
 
     }
 
+    //generation
     Generate () {
 
         if(this.CurrentMesh != null) {
@@ -243,15 +278,26 @@ class CelestialBody {
 
     #render (_verts) {
 
+        //clear old texture meshes
+        if(this.TextureMeshes.length > 0) {
+
+            for (let i = 0; i < this.TextureMeshes.length; i++) {
+                this.Object.remove(this.TextureMeshes[i]);
+            }
+
+            this.TextureMeshes = [];
+        }
+
         //mesh planet
         let geometry = new BufferGeometry().setFromPoints(_verts);
         geometry.computeVertexNormals();
 
+        let biomesData = this.#generateTexture(this.settings.biomes.layers);
+
         const material = ShaderManager.PlanetShaderMat(
-            this.#generateTexture(), 
-            this.minSurfacePoint, 
-            this.maxSurfacePoint, 
-            this.settings.water?.levelOffset ?? 0,
+            biomesData.biomes,
+            biomesData.texture,
+            this,
         );
 
         this.CurrentMesh = new Mesh(geometry, material);
@@ -260,56 +306,59 @@ class CelestialBody {
 
     }
 
-    #generateTexture () {
-
-        if(this.TextureMesh) {
-            this.Object.remove(this.TextureMesh);
-            this.TextureMesh = null;
-        }
+    /**
+     * 
+     * @param {BiomeData[]} biomeDataArr 
+     * @returns 
+     */
+    #generateTexture (biomeDataArr) {
 
         const width = 128 * 20;
 
-        let colorPoints = [
-            new GradientColorPoint(209,191,113,0),
-            new GradientColorPoint(0,50,0,.4),
-            new GradientColorPoint(15,112,0,.5),
-            new GradientColorPoint(100,100,100,.85),
-            new GradientColorPoint(255,255,255,.9),
-            new GradientColorPoint(255,255,255,1.0),
-        ];
-
         let generatedFade = [];
+        let biomes = [];
 
-        for (let i = 0; i < colorPoints.length - 1; i++) {
+        for (let b = 0; b < biomeDataArr.length; b++) {
+           
+            const biomeDat = biomeDataArr[b];
+            const colorPoints = biomeDat.colorPoints;
 
-            let col = colorPoints[i];
-            let nextCol = colorPoints[i + 1];
+            for (let i = 0; i < colorPoints.length - 1; i++) {
 
-            const usePixelWidthA = Math.floor(width * (col.offset));
-            const usePixelWidthB = Math.floor(width * (nextCol.offset));
-            const pixelCount = Math.floor(usePixelWidthB - usePixelWidthA);
+                let col = colorPoints[i];
+                let nextCol = colorPoints[i + 1];
+    
+                const usePixelWidthA = Math.floor(width * (col.offset));
+                const usePixelWidthB = Math.floor(width * (nextCol.offset));
+                const pixelCount = Math.floor(usePixelWidthB - usePixelWidthA);
+    
+                for (let j = usePixelWidthA; j < usePixelWidthB; j++) {
+    
+                    const perc = (j - usePixelWidthA) / pixelCount;
+    
+                    let v1 = new Vector3(col.r, col.g, col.b);
+                    let v2 = new Vector3(nextCol.r, nextCol.g, nextCol.b);
+    
+                    //lerp values
+                    let v3 = new Vector3().lerpVectors(v1, v2, perc);
+    
+                    generatedFade.push(Math.floor(v3.x));
+                    generatedFade.push(Math.floor(v3.y));
+                    generatedFade.push(Math.floor(v3.z));
+                    generatedFade.push(255);
 
-            for (let j = usePixelWidthA; j < usePixelWidthB; j++) {
-
-                const perc = (j - usePixelWidthA) / pixelCount;
-
-                let v1 = new Vector3(col.r, col.g, col.b);
-                let v2 = new Vector3(nextCol.r, nextCol.g, nextCol.b);
-
-                //lerp values
-                let v3 = new Vector3().lerpVectors(v1, v2, perc);
-
-                generatedFade.push(Math.floor(v3.x));
-                generatedFade.push(Math.floor(v3.y));
-                generatedFade.push(Math.floor(v3.z));
-                generatedFade.push(255);
-
+                }
+    
             }
+
+            biomes.push({
+                offsetY : biomeDat.offset
+            });
 
         }
 
         const data = Uint8Array.from(generatedFade);
-        const texture = new DataTexture(data, width, 1);
+        const texture = new DataTexture(data, width, biomeDataArr.length);
         texture.needsUpdate = true;
 
         const m = new MeshBasicMaterial({
@@ -322,9 +371,14 @@ class CelestialBody {
         plane.rotateY(180 * 0.0174533);
 
         this.Object.add(plane);
-        this.TextureMesh = plane;
+        this.TextureMeshes.push(plane);
 
-        return texture;
+        return {
+
+            biomes : biomes,
+            texture : texture,
+
+        };
 
     }
 
@@ -383,6 +437,52 @@ class CelestialBody {
 
 }
 
+class Planet extends CelestialBody {
+
+    /** @type {Prando} */
+    static FromRng (generator) {
+
+        const seed = generator.next();
+        const minCentre = generator.next(5,20);
+
+        let body = new Planet({
+            seed : seed,
+            size : {
+                resolution : Math.min(100, Math.floor(minCentre * 10)),
+                minimalCentre : minCentre,
+            },
+            atmosphere : {
+                waveLengthRed : generator.next(0,1500),
+                waveLengthGreen : generator.next(0,1000),
+                waveLengthBlue : generator.next(0,1000),
+                scatteringStrength : 2.0,
+                scale : 1.0,
+                fallOff : generator.next(10, 40),
+                instensity : generator.next(1, 3),
+            }
+        });
+
+        body.Generate();
+
+        return body;
+
+    }
+
+}
+
+class BiomeData {
+
+    constructor (colorPoints, offset) {
+
+        /** @type {GradientColorPoint[]} */
+        this.colorPoints = colorPoints;
+        /** @type {Number} */
+        this.offset = offset;
+    
+    }
+
+}
+
 class GradientColorPoint {
     
     constructor (r,g,b,offset) {
@@ -394,6 +494,10 @@ class GradientColorPoint {
 
     }
 
+}
+
+function MapNum (val, in_min, in_max, out_min, out_max) {
+    return (val - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
 function mergeDeep(target, ...sources) {
@@ -419,4 +523,4 @@ function mergeDeep(target, ...sources) {
     return mergeDeep(target, ...sources);
 }
 
-export { CelestialBody }
+export { CelestialBody, Planet, BiomeData, GradientColorPoint}

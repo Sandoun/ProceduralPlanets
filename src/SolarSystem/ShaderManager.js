@@ -4,10 +4,12 @@ import {
     UniformsLib,
     ShaderMaterial,
     Vector3,
-    Matrix4
+    Matrix4,
+    DataArrayTexture
 } from '../Three/three.module.js'
 
 import * as UniformsUtils from '../Three/UniformsUtils.js'
+import { CelestialBody } from './CelestialBody.js';
 
 class ShaderManager {
 
@@ -38,7 +40,14 @@ class ShaderManager {
 
     }
 
-    static PlanetShaderMat (texture, minSurfPoint, maxSurfPoint, waterLvlOffset) {
+    /**
+     * 
+     * @param {*} biomesArr 
+     * @param {*} biomesTexture 
+     * @param {CelestialBody} body 
+     * @returns 
+     */
+    static PlanetShaderMat (biomesArr, biomesTexture, body) {
 
         const merged = UniformsUtils.mergeUniforms([
             UniformsLib.lights,
@@ -46,16 +55,23 @@ class ShaderManager {
             {
                 time: { type: "f", value: 1.0 },
                 waterColor : {type: 'vec3', value: new Color('rgb(0,0,255)')},
-                minWaterLevel : {type: 'float', value : minSurfPoint + waterLvlOffset},
-                texture1: { value: texture },
-                elevationMinMax : {type: 'vec2', value: new Vector2(minSurfPoint, maxSurfPoint)},
+                minWaterLevel : {type: 'float', value : body.minSurfacePoint + body.settings.water?.levelOffset ?? 0},
+                biomes: { value : biomesArr},
+                biomeGradients : { value : biomesTexture},
+                biomeNoiseScale : { value : body.settings.biomes.noiseScale },
+                biomeNoiseFrequ : { value : body.settings.biomes.noiseFrequency },
+                biomeBlending : { value : body.settings.biomes.blendingSize },
+                elevationMinMax : {type: 'vec2', value: new Vector2(body.minSurfacePoint, body.maxSurfacePoint)},
             }
         ]);
 
+        const vert = ShaderManager.glslData.PlanetShader.shader.vertex;
+        const frag = ShaderManager.glslData.PlanetShader.shader.fragment;
+
         return new ShaderMaterial ({
             uniforms: merged,
-            vertexShader: ShaderManager.glslData.PlanetShader.shader.vertex,
-            fragmentShader: ShaderManager.glslData.PlanetShader.shader.fragment,
+            vertexShader: vert,
+            fragmentShader: frag.replace("#define BIOMES_SIZE 3", `#define BIOMES_SIZE ${biomesArr.length}`),
             lights: true
         });
 

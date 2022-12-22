@@ -2,6 +2,7 @@ precision highp float;
 
 uniform float time;
 uniform float minWaterLevel;
+uniform float biomeNoiseFrequ;
 
 varying vec3 vUv; 
 
@@ -11,6 +12,7 @@ varying vec3 vecNormal;
 //wave noise
 varying float genWaterNoise;
 varying float genWaveNoise;
+varying float genBiomeNoise;
 
 vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
 vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -57,6 +59,9 @@ void main() {
   float waveNoiseFrequ = 20.0;
   float tWaveNoise = time / 1000.0;
   genWaveNoise = clamp(pnoise( waveNoiseFrequ * (position +  tWaveNoise)), 0., 1.);
+
+  //gen biome noise
+  genBiomeNoise = pnoise( biomeNoiseFrequ * (position));
 
   //if water level
   float len = length(vUv);

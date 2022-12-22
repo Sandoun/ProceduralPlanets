@@ -26,29 +26,13 @@ let solarSystem;
 let startTime = Date.now();
 
 const gui = new GUI();
-let planetOptions = {
 
-  debug : false,
-  seed : '0123456',
-  minimalCentre : 15,
-  //mesh resolution
-  resolution : 300,
-  //increase detail
-  noiseLayers : 10,
-  weightMultiplicator : 2,
-  //how rought should the terrain look 
-  roughness : 3,
-  //overall how many places with high areas should appear
-  persistence : .4,
-  noiseStrength : 1,
-  waterLevelOffset : Math.random() * .3,
-  hasWater : true,
-  rotationSpeed : .5,
+let debugOptions = {
 
-	Rebuild: () => { 
+  seed : "testseeed",
 
-    RebuildPlanet();
-
+  regenerateAll : () => {
+    GenerateSystem();
   }
 
 };
@@ -65,6 +49,8 @@ async function PreLoadFiles () {
 
 function Main () {
 
+  SetupDebugUI();
+
   SetupScene();
 
   SetupRenderer();
@@ -75,10 +61,8 @@ function Main () {
   SetupLighting();
 
   RenderDebug();
-  
-  scene.addEventListener("")
 
-  solarSystem = new SolarSystemRenderer(renderer, scene, camera, composer);
+  GenerateSystem();
 
   animate();
 
@@ -86,21 +70,8 @@ function Main () {
 
 function SetupDebugUI () {
 
-  gui.add( planetOptions, 'debug').onChange((x) => RebuildPlanet());
-  gui.add( planetOptions, 'seed').onChange((x) => RebuildPlanet());
-  gui.add( planetOptions, 'minimalCentre').onChange((x) => RebuildPlanet());
-  gui.add( planetOptions, 'resolution').onChange((x) => RebuildPlanet());
-  gui.add( planetOptions, 'noiseStrength').onChange((x) => RebuildPlanet());
-  gui.add( planetOptions, 'noiseLayers').onChange((x) => RebuildPlanet());
-  gui.add( planetOptions, 'roughness').onChange((x) => RebuildPlanet());
-  gui.add( planetOptions, 'persistence').onChange((x) => RebuildPlanet());
-  gui.add( planetOptions, 'weightMultiplicator').onChange((x) => RebuildPlanet());
-
-  gui.add( planetOptions, 'Rebuild');
-
-  gui.add(planetOptions, 'rotationSpeed', 0, 10, 0.1);
-  gui.add(planetOptions, 'waterLevelOffset', 0, 1, 0.1);
-  gui.add(planetOptions, 'hasWater');
+  gui.add( debugOptions, 'seed').onChange((x) => RebuildPlanet());
+  gui.add( debugOptions, 'regenerateAll');
 
 }
 
@@ -110,7 +81,6 @@ function SetupScene () {
   scene.background = new THREE.Color("rgb(0, 0, 5)");
 
 }
-
 
 function SetupRenderer () {
 
@@ -128,26 +98,12 @@ function SetupRenderer () {
   camera.position.z = -20;
   camera.lookAt(0,0,0);
 
-  //depth render target
-  /* depthRenderTarget = new THREE.WebGLRenderTarget( defaultRendererW,  defaultRendererH );
-  depthRenderTarget.texture.format = THREE.RGBFormat;
-  depthRenderTarget.texture.minFilter = THREE.NearestFilter;
-  depthRenderTarget.texture.magFilter = THREE.NearestFilter;
-  depthRenderTarget.texture.generateMipmaps = false;
-  depthRenderTarget.stencilBuffer = false;
-  depthRenderTarget.depthBuffer = true;
-  depthRenderTarget.depthTexture = new THREE.DepthTexture();
-  depthRenderTarget.depthTexture.type = THREE.UnsignedShortType; */
-
   //post processing
   composer = new EffectComposer(renderer);
   composer.setSize(defaultRendererW, defaultRendererH);
 
   const renderPass = new RenderPass( scene, camera );
   composer.addPass( renderPass );
-
-  //shaderPass = new ShaderPass(ShaderManager.PostProcessingShader());
-  //composer.addPass(shaderPass);
 
   document.body.appendChild( renderer.domElement );
 
@@ -177,17 +133,6 @@ function animate() {
 
   requestAnimationFrame( animate );
 
-  /* if(shaderPass != null && camera != null) {
-
-    shaderPass.uniforms.worldSpaceCamPos.value = camera.getWorldPosition(new THREE.Vector3());
-    shaderPass.uniforms.IN_INV_PROJECTION_MATRIX.value = camera.projectionMatrixInverse;
-    shaderPass.uniforms.IN_INV_VIEW_MATRIX.value = camera.matrix;
-    shaderPass.uniforms.tDepth.value = depthRenderTarget.depthTexture;
-    
-  } */
-    
-  //renderer.setRenderTarget(depthRenderTarget);
-
   solarSystem.OnAnimateLoop();
   renderer.render(scene, camera);
   composer.render();
@@ -215,4 +160,11 @@ function onWindowResize(){
 
 }
 
+function GenerateSystem () {
+
+  solarSystem = new SolarSystemRenderer(renderer, scene, camera, composer);
+  solarSystem.seed = debugOptions.seed;
+  solarSystem.GenerateSystem();
+
+}
 

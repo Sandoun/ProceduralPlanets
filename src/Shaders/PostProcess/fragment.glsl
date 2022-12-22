@@ -133,7 +133,7 @@ vec3 calculateLight(
 		inScatterPoint += rayDir * stepSize;
 	}
 	
-	return (originalCol) + (inScatteredLight * body.Intensity);
+	return mix(originalCol, inScatteredLight * body.Intensity,.5);
 	
 }
 
