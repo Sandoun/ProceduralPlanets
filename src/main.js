@@ -7,6 +7,8 @@ import { RenderPass } from './Three/Postprocessing/RenderPass.js';
 import { ShaderPass } from './Three/Postprocessing/ShaderPass.js';
 import GUI from './Three/lil-gui.esm.js';
 import { SolarSystemRenderer } from './SolarSystem/SolarSystemRenderer.js';
+import { UiManager } from './UserInterface/UiManager.js';
+import { WordGenerator } from './SolarSystem/WordGenerator.js';
 
 window.addEventListener( 'resize', onWindowResize, false );
 
@@ -22,6 +24,9 @@ let composer;
 let shaderPass;
 /** @type {SolarSystemRenderer} */
 let solarSystem;
+
+/** @type {UiManager} */
+let uiManager;
 
 let startTime = Date.now();
 
@@ -42,6 +47,7 @@ PreLoadFiles();
 async function PreLoadFiles () {
 
   await ShaderManager.LoadShaders();
+  await WordGenerator.Preload();
 
   Main();
 
@@ -63,6 +69,8 @@ function Main () {
   RenderDebug();
 
   GenerateSystem();
+
+  uiManager = new UiManager(solarSystem);
 
   animate();
 
@@ -136,6 +144,8 @@ function animate() {
   solarSystem.OnAnimateLoop();
   renderer.render(scene, camera);
   composer.render();
+
+  uiManager.OnFrameUpdate();
 
 };
 

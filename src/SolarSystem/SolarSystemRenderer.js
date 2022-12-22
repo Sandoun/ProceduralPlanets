@@ -43,11 +43,15 @@ import { CelestialBody, Planet } from './CelestialBody.js';
 //import { RandomNumberGen } from './RandomNumberGen.js';
 import { Prando } from './Prando.js';
 import greenlet from './Greenlet.js';
+import { WordGenerator } from './WordGenerator.js';
 
 class SolarSystemRenderer {
 
     /**@type {Prando} Rng generator*/
     rngGenerator;
+
+    /** @type {WordGenerator} */
+    wordGenerator;
 
     /**@type {CelestialBody[]} Collection of all celestial bodys*/
     celestialBodys = [];
@@ -127,6 +131,8 @@ class SolarSystemRenderer {
 
     async GenerateSystem () {
 
+        this.wordGenerator = new WordGenerator(this.seed);
+
         this.celestialBodys = [];
         this.object3D.children = [];
 
@@ -155,7 +161,7 @@ class SolarSystemRenderer {
 
     #AddPlanet (planetIndex) {
 
-        let body = Planet.FromRng(this.rngGenerator);
+        let body = Planet.FromRng(this);
 
         body.Generate();
 

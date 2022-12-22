@@ -32,6 +32,8 @@ import {
 import { ShaderManager } from './ShaderManager.js';
 import { Perlin } from './Perlin.js';
 import { Prando } from './Prando.js';
+import { WordGenerator } from './WordGenerator.js';
+import { SolarSystemRenderer } from './SolarSystemRenderer.js';
 
 class CelestialBody {
 
@@ -152,8 +154,6 @@ class CelestialBody {
         this.Object = new Object3D();
 
         this.#perlin = new Perlin(this.settings.seed);
-
-        console.log(this);
 
     }
 
@@ -439,11 +439,17 @@ class CelestialBody {
 
 class Planet extends CelestialBody {
 
-    /** @type {Prando} */
-    static FromRng (generator) {
+    /** @type {String} */
+    name;
 
-        const seed = generator.next();
-        const minCentre = generator.next(5,20);
+    /**
+     * 
+     * @param {SolarSystemRenderer} solSystem 
+     */
+    static FromRng (solSystem) {
+
+        const seed = solSystem.rngGenerator.next();
+        const minCentre = solSystem.rngGenerator.next(5,20);
 
         let body = new Planet({
             seed : seed,
@@ -452,21 +458,39 @@ class Planet extends CelestialBody {
                 minimalCentre : minCentre,
             },
             atmosphere : {
-                waveLengthRed : generator.next(0,1500),
-                waveLengthGreen : generator.next(0,1000),
-                waveLengthBlue : generator.next(0,1000),
+                waveLengthRed : solSystem.rngGenerator.next(0,1500),
+                waveLengthGreen : solSystem.rngGenerator.next(0,1000),
+                waveLengthBlue : solSystem.rngGenerator.next(0,1000),
                 scatteringStrength : 2.0,
                 scale : 1.0,
-                fallOff : generator.next(10, 40),
-                instensity : generator.next(1, 3),
+                fallOff : solSystem.rngGenerator.next(10, 40),
+                instensity : solSystem.rngGenerator.next(1, 3),
             }
         });
 
         body.Generate();
+        body.GenerateRandomName(solSystem);
+
+        console.log(body);
 
         return body;
 
     }
+
+    /**
+     * 
+     * @param {SolarSystemRenderer} solSystem 
+     */
+    GenerateRandomName (solSystem) {
+
+        this.name = solSystem.wordGenerator.GeneratePlanetNameNext();
+
+    }
+
+}
+
+class Moon extends CelestialBody {
+
 
 }
 
