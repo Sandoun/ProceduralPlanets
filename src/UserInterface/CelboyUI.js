@@ -19,8 +19,9 @@ import {
     Matrix4,
 } from '../Three/three.module.js';
 
-import { CelestialBody } from '../SolarSystem/CelestialBody.js';
+import { CelestialBody } from '../SolarSystem/Bodies/CelestialBody.js';
 import { UiManager } from './UiManager.js';
+import './CustomConverters.js';
 
 //general ui wrapper
 class CelboyUI {
@@ -39,8 +40,7 @@ class CelboyUI {
         this.body = body;
 
         this.infoEl = document.createElement('planet-info');
-
-        this.infoEl.planetName = this.body.name;
+        this.infoEl.celBodyInfo = this.body;
 
         this.manager.rootEl.appendChild(this.infoEl)
 
@@ -63,7 +63,8 @@ class CelboyUI {
         frustum.setFromProjectionMatrix(matrix)
         
         this.infoEl.isVisible = frustum.containsPoint(worldPos) && dist <= CelboyUI.maxDistance;
-        
+        this.infoEl.distToCam = dist;
+
         if(!this.infoEl.isVisible) return;
 
         this.infoEl.distOpacity = (CelboyUI.maxDistance - dist) / (CelboyUI.maxDistance / 2);
@@ -119,8 +120,10 @@ export class PlanetInfo extends LitElement {
         top: {},
         left: {},
         isVisible: {},
-        planetName : {},
+        /** @type {CelestialBody} */
+        celBodyInfo : {},
         distOpacity : {},
+        distToCam : {},
         zIdx : {}
     };
     static styles = css`
@@ -129,12 +132,13 @@ export class PlanetInfo extends LitElement {
             user-select: none;
             position : absolute;
         }
-        div {
+        .rootdiv {
             position : absolute;
             background : #303030;
-            padding : 1em;
             color : white;
             border-radius: 1em;
+            min-width: 18ch;
+            white-space: wrap;  
             z-index: var(--z-idx-off);
         }
         .visible {
@@ -144,28 +148,80 @@ export class PlanetInfo extends LitElement {
         .hidden {
             opacity : 0;
         }
+        .topinfo {
+            margin: .5em 1em .5em 1em;
+        }
         .name {
             white-space: nowrap;    
+        }
+        .info {
+            white-space: nowrap;    
+            color: gray;
+        }
+        .subinfo {
+            padding: .5em 1em 1em 1em;
+            white-space: wrap;    
+            font-size: .7em;
+            background: rgba(0,0,0, .1);
+            color: gray;
         }
     `;
     constructor() {
         super();
         this.top = 0;
         this.left = 0;
+        this.distToCam = 0;
         this.isVisible = true;
+        /** @type {CelestialBody} */
+        this.celBodyInfo = null;
     }
-    render() {
+    renderPlanet () {
         return html`
             <div style="left: ${this.left}px; 
                         top: ${this.top}px; 
                         --dist-opa: ${this.distOpacity};
                         --z-idx-off: ${this.zIdx}" 
-                 class="${this.isVisible ? "visible" : "hidden"}">
+                 class="rootdiv ${this.isVisible ? "visible" : "hidden"}">
                  
-                 <span class="name">${this.planetName}</span>
-            
+                <div class="topinfo">
+                    <span class="name">${this.celBodyInfo.name}</span><br/>
+                    <span class="info">Distance ${this.distToCam.roundPrecise(0)}U</span><br/>
+                </div>
+                
             </div>
         `;
+    }
+
+    renderMoon () {
+        return html`
+            <div style="left: ${this.left}px; 
+                        top: ${this.top}px; 
+                        --dist-opa: ${this.distOpacity};
+                        --z-idx-off: ${this.zIdx}" 
+                 class="rootdiv ${this.isVisible ? "visible" : "hidden"}">
+                 
+                <div class="topinfo">
+                    <span class="name">${this.celBodyInfo.name}</span><br/>
+                    <span class="info">Distance ${this.distToCam.roundPrecise(0)}U</span><br/>
+                </div>
+                
+                <div class="subinfo">
+                    <span>
+                        Is orbiting the planet ${this.celBodyInfo.ownOrbit.orbitObject.name} 
+                        with a period of ${this.celBodyInfo.ownOrbit.periodSeconds.secondsToStr()}
+                    </span>
+                </div>
+            </div>
+        `;
+    }
+
+    render() {
+        switch(this.celBodyInfo.type) {
+            case "Planet" :
+            return this.renderPlanet();
+            case "Moon" :
+            return this.renderMoon();
+        } 
     }
 }
 

@@ -27,13 +27,13 @@ import {
     UnsignedByteType,
     UniformsLib,
     ShaderLib,
-} from '../Three/three.module.js';
+} from '../../Three/three.module.js';
 
-import { ShaderManager } from './ShaderManager.js';
-import { Perlin } from './Perlin.js';
-import { Prando } from './Prando.js';
-import { WordGenerator } from './WordGenerator.js';
-import { SolarSystemRenderer } from './SolarSystemRenderer.js';
+import { ShaderManager } from '../ShaderManager.js';
+import { Perlin } from '../Perlin.js';
+import { Prando } from '../Prando.js';
+import { WordGenerator } from '../WordGenerator.js';
+import SolarSystemRenderer from '../SolarSystemRenderer.js';
 
 class CelestialBody {
 
@@ -67,11 +67,14 @@ class CelestialBody {
      * @property {Number} biomes.noiseFrequency Noise frequency
      * @property {Number} biomes.blendingSize Size of the range for blending inbetween biomes
      * @property {BiomeData[]} biomes.layers biome layer definitions
+     * @property {Object} rotation Rotation settings
+     * @property {Number} rotation.axisTilt Axis tilt in degrees
+     * @property {Number} rotation.periodSeconds Own rotation peroid in seconds
      */
 
     /** @type {CelestialSettings} */
     settings = {
-        seed : '0123456',
+        seed : undefined,
         size : {
             minimalCentre : 15,
             resolution : 300,
@@ -84,7 +87,7 @@ class CelestialBody {
             strength : 1,
         },
         water : {
-            levelOffset : .15,
+            levelOffset : .35,
         },
         atmosphere : {
             waveLengthRed : 700,
@@ -122,8 +125,27 @@ class CelestialBody {
                     new GradientColorPoint(255,255,255,1.0),
                 ], .6),
             ]
+        }, 
+        rotation : {
+            axisTilt : 15,
+            periodSeconds : 10,
         }
     };
+
+    /** @type {String} Naming of the body */
+    name;
+
+    /** @type {('Generic'|'Planet'|'Moon')} Type of celestial body it is */
+    type;
+
+    /** @type {Orbit} Own orbit of the body*/
+    ownOrbit;
+
+    /** @type {Number} Index on the orbital plane this body is orbiting on */
+    indexOrbitalPlane;
+
+    /** @type {Orbit[]} Orbits this body has */
+    orbits = [];
 
     /**
      * Initiates a new celestial body
@@ -144,6 +166,7 @@ class CelestialBody {
 
         this.minSurfacePoint = 0;
         this.maxSurfacePoint = 1;
+        this.waterSurfacePoint = 0;
 
         /** @type {Mesh} */
         this.CurrentMesh = null;
@@ -167,6 +190,10 @@ class CelestialBody {
         this.minSurfacePoint = Number.MAX_SAFE_INTEGER;
         this.maxSurfacePoint = 0;
 
+        if(this.settings.water) {
+            this.waterSurfacePoint = this.settings.size.minimalCentre + this.settings.water.levelOffset;
+        } 
+
         //generate verts and merge all 6 face sides
         let merged = [];
         for (let i = 0; i < this.DirectionsList.length; i++) {
@@ -181,9 +208,50 @@ class CelestialBody {
 
     }
 
+    /**
+     * 
+     * @param {CelestialBody} body 
+     * @param {Number} distanceToCenter 
+     * @param {Number} angle 
+     * @returns {Orbit} the calculated orbit
+     */
+    AttachOrbitingBody (body, parent, distanceToCenter, angle, periodSeconds, reversed) {
+
+        const orb = new Orbit(body, parent, distanceToCenter, angle, periodSeconds, reversed);
+        this.orbits.push(orb);
+        return orb;
+
+    }
+
     OnTimeUpdate (_t) {
 
+        //update time on shader
         this.CurrentMesh.material.uniforms.time.value = _t / 30;
+
+        //let the body rotate
+        const rotAngle = _t / ((this.settings.rotation.periodSeconds * 1000) / 360) * -1;
+        this.Object.rotation.y = rotAngle * (Math.PI / 180);
+        this.Object.rotation.x = this.settings.rotation.axisTilt * (Math.PI / 180);
+
+        //let the moons orbit
+        for (let i = 0; i < this.orbits.length; i++) {
+            
+            const orbit = this.orbits[i];
+
+            //calc periodFactor
+            if(orbit.isReversed) {
+                orbit.angle = _t / ((orbit.periodSeconds * 1000) / 360) * -1;
+            } else {
+                orbit.angle = _t / ((orbit.periodSeconds * 1000) / 360);
+            }
+
+            const angleRadians = orbit.angle * (Math.PI / 180);
+            const newX = Math.cos(angleRadians) * orbit.distanceToCenter;
+            const newY = Math.sin(angleRadians) * orbit.distanceToCenter;
+            
+            orbit.attachedBody.Object.position.set(newX + this.Object.position.x, this.Object.position.y, newY + this.Object.position.z);
+
+        }
 
     }
 
@@ -197,7 +265,6 @@ class CelestialBody {
         let axisB = new Vector3().crossVectors(localUp, axisA);
 
         let points = [];
-
         let pos = 0;
 
         for (let y = 0; y < this.settings.size.resolution; y++) {
@@ -216,9 +283,13 @@ class CelestialBody {
 
                 //calc min max points
                 let pLen = pointOnSphere.length();
-                if(pLen < this.minSurfacePoint) {
+                
+                if(pLen <= this.waterSurfacePoint) {
+                    this.minSurfacePoint = this.waterSurfacePoint;
+                } else if (pLen < this.minSurfacePoint) {
                     this.minSurfacePoint = pLen;
                 } 
+                
                 if(pLen > this.maxSurfacePoint) {
                     this.maxSurfacePoint = pLen;
                 }
@@ -421,11 +492,7 @@ class CelestialBody {
         _noiseVal *= this.settings.terrain.strength;
         _noiseVal += this.settings.size.minimalCentre;
 
-        if(this.settings.water) {
-            return this.#clamp(_noiseVal, this.settings.size.minimalCentre + this.settings.water.levelOffset, 100);
-        } else {
-            return this.#clamp(_noiseVal, this.settings.size.minimalCentre, 100);
-        }
+        return this.#clamp(_noiseVal, this.waterSurfacePoint, 100);
 
     }
 
@@ -434,63 +501,6 @@ class CelestialBody {
         return Math.min(Math.max(num, min), max);
 
     }
-
-}
-
-class Planet extends CelestialBody {
-
-    /** @type {String} */
-    name;
-
-    /**
-     * 
-     * @param {SolarSystemRenderer} solSystem 
-     */
-    static FromRng (solSystem) {
-
-        const seed = solSystem.rngGenerator.next();
-        const minCentre = solSystem.rngGenerator.next(5,20);
-
-        let body = new Planet({
-            seed : seed,
-            size : {
-                resolution : Math.min(100, Math.floor(minCentre * 10)),
-                minimalCentre : minCentre,
-            },
-            atmosphere : {
-                waveLengthRed : solSystem.rngGenerator.next(0,1500),
-                waveLengthGreen : solSystem.rngGenerator.next(0,1000),
-                waveLengthBlue : solSystem.rngGenerator.next(0,1000),
-                scatteringStrength : 2.0,
-                scale : 1.0,
-                fallOff : solSystem.rngGenerator.next(10, 40),
-                instensity : solSystem.rngGenerator.next(1, 3),
-            }
-        });
-
-        body.Generate();
-        body.GenerateRandomName(solSystem);
-
-        console.log(body);
-
-        return body;
-
-    }
-
-    /**
-     * 
-     * @param {SolarSystemRenderer} solSystem 
-     */
-    GenerateRandomName (solSystem) {
-
-        this.name = solSystem.wordGenerator.GeneratePlanetNameNext();
-
-    }
-
-}
-
-class Moon extends CelestialBody {
-
 
 }
 
@@ -515,6 +525,31 @@ class GradientColorPoint {
         this.g = g;
         this.b = b;
         this.offset = offset;
+
+    }
+
+}
+
+class Orbit {
+
+    constructor (body, parent, distCenter, angle, periodSeconds, reversed) {
+
+        /** @type {CelestialBody} */
+        this.attachedBody = body;
+
+        /** @type {CelestialBody} */
+        this.orbitObject = parent;
+
+        /** @type {Number} */
+        this.distanceToCenter = distCenter;
+        
+        /** @type {Number} */
+        this.angle = angle;
+
+        /** @type {Number} */
+        this.periodSeconds = periodSeconds;
+
+        this.isReversed = reversed;
 
     }
 
@@ -547,4 +582,4 @@ function mergeDeep(target, ...sources) {
     return mergeDeep(target, ...sources);
 }
 
-export { CelestialBody, Planet, BiomeData, GradientColorPoint}
+export { CelestialBody, BiomeData, GradientColorPoint, Orbit }

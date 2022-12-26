@@ -1,12 +1,12 @@
 import * as THREE from './Three/three.module.js';
 import { ShaderManager } from './SolarSystem/ShaderManager.js';
 import { OrbitControls } from './Three/OrbitControls.js';
-import { CelestialBody } from './SolarSystem/CelestialBody.js';
+import { CelestialBody } from './SolarSystem/Bodies/CelestialBody.js';
 import { EffectComposer } from './Three/Postprocessing/EffectComposer.js';
 import { RenderPass } from './Three/Postprocessing/RenderPass.js';
 import { ShaderPass } from './Three/Postprocessing/ShaderPass.js';
 import GUI from './Three/lil-gui.esm.js';
-import { SolarSystemRenderer } from './SolarSystem/SolarSystemRenderer.js';
+import SolarSystemRenderer from './SolarSystem/SolarSystemRenderer.js';
 import { UiManager } from './UserInterface/UiManager.js';
 import { WordGenerator } from './SolarSystem/WordGenerator.js';
 
@@ -20,11 +20,8 @@ let renderer;
 let camera;
 /** @type {EffectComposer} */
 let composer;
-/** @type {ShaderPass} */
-let shaderPass;
 /** @type {SolarSystemRenderer} */
 let solarSystem;
-
 /** @type {UiManager} */
 let uiManager;
 
@@ -34,7 +31,7 @@ const gui = new GUI();
 
 let debugOptions = {
 
-  seed : "testseeed",
+  seed : "testseed",
 
   regenerateAll : () => {
     GenerateSystem();
@@ -174,6 +171,7 @@ function GenerateSystem () {
 
   solarSystem = new SolarSystemRenderer(renderer, scene, camera, composer);
   solarSystem.seed = debugOptions.seed;
+
   solarSystem.GenerateSystem();
 
 }

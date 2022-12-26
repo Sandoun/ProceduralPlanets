@@ -57,25 +57,11 @@ void main() {
 
   //generate wave noise
   float waveNoiseFrequ = 20.0;
-  float tWaveNoise = time / 1000.0;
+  float tWaveNoise = (time / 2000.0);
   genWaveNoise = clamp(pnoise( waveNoiseFrequ * (position +  tWaveNoise)), 0., 1.);
 
   //gen biome noise
   genBiomeNoise = pnoise( biomeNoiseFrequ * (position));
-
-  //if water level
-  float len = length(vUv);
-  if(len < minWaterLevel) {
-
-    float frequ =  1.0;
-    float intensity = 0.2;
-    float tScale = time / 300.0;
-    genWaterNoise = pnoise( frequ * (position +  tScale));
-    float displacement = intensity * clamp(genWaterNoise, 0.0, 1.0);
-
-    //newPosition = position + normal * displacement;
-
-  }
 
   gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0); 
 

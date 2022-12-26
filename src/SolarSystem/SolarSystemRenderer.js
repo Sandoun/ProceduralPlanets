@@ -36,22 +36,16 @@ import {
 } from '../Three/three.module.js';
 
 import { EffectComposer } from '../Three/Postprocessing/EffectComposer.js';
-import { RenderPass } from '../Three/Postprocessing/RenderPass.js';
 import { ShaderPass } from '../Three/Postprocessing/ShaderPass.js';
 import { ShaderManager } from './ShaderManager.js';
-import { CelestialBody, Planet } from './CelestialBody.js';
-//import { RandomNumberGen } from './RandomNumberGen.js';
+import { CelestialBody } from './Bodies/CelestialBody.js';
+import CelestialBodyFactory from './Bodies/CelestialBodyFactory.js';
 import { Prando } from './Prando.js';
-import greenlet from './Greenlet.js';
-import { WordGenerator } from './WordGenerator.js';
 
-class SolarSystemRenderer {
+export default class SolarSystemRenderer extends EventTarget {
 
     /**@type {Prando} Rng generator*/
     rngGenerator;
-
-    /** @type {WordGenerator} */
-    wordGenerator;
 
     /**@type {CelestialBody[]} Collection of all celestial bodys*/
     celestialBodys = [];
@@ -76,6 +70,8 @@ class SolarSystemRenderer {
      * @param {EffectComposer} composer 
      */
     constructor (renderer, scene, camera, composer) {
+
+        super();
 
         if(!ShaderManager.loadedFiles) {
             throw new Error("Preaload the shaders first by calling ShaderManager.LoadShaders()");
@@ -111,6 +107,7 @@ class SolarSystemRenderer {
         this.renderer.setRenderTarget(this.depthRenderTarget);
 
         //update all bodys on animate
+        if(!this.celestialBodys) return;
         for (const body of this.celestialBodys) {
             body.OnTimeUpdate(elapsedMilliseconds);
         }
@@ -131,46 +128,34 @@ class SolarSystemRenderer {
 
     async GenerateSystem () {
 
-        this.wordGenerator = new WordGenerator(this.seed);
-
         this.celestialBodys = [];
         this.object3D.children = [];
 
         this.rngGenerator = new Prando(this.seed);
+        this.bodyFactory = new CelestialBodyFactory(this);
 
-        const numOfPlanets = this.rngGenerator.nextInt(1, 10);
+        this.celestialBodys = await this.bodyFactory.GenerateAsync();
+    
+        console.log(this.celestialBodys)
 
-        let parallelGeneration = []; 
+        if(this.celestialBodys == null || this.celestialBodys.length <= 0) return;
 
-        for (let i = 0; i < numOfPlanets; i++) {
-
-            const asyncGen = async () => {
-              this.#AddPlanet(i);
-            }
-
-            parallelGeneration.push(asyncGen());
+        let numBodiesWithAtmos = 0;
+        for (let i = 0; i < this.celestialBodys.length; i++) {
+            
+            this.object3D.add(this.celestialBodys[i].Object);
+            
+            if(this.celestialBodys[i].settings.atmosphere != undefined)
+                numBodiesWithAtmos++;
 
         }
 
-        await Promise.all(parallelGeneration);
+        this.dispatchEvent(new Event("bodies-loaded"));
 
         //add the pp shader with num of shaded bodies
-        this.#SetupAtmosphereRenderer(numOfPlanets);
+        if(numBodiesWithAtmos > 0)
+            this.#SetupAtmosphereRenderer(numBodiesWithAtmos);
         
-    }
-
-    #AddPlanet (planetIndex) {
-
-        let body = Planet.FromRng(this);
-
-        body.Generate();
-
-        //translate planet
-        body.Object.translateX(planetIndex * 50);
-
-        this.object3D.add(body.Object);
-        this.celestialBodys.push(body);
-
     }
 
     #SetupDepthRenderer () {
@@ -192,9 +177,7 @@ class SolarSystemRenderer {
 
     #SetupAtmosphereRenderer (numBodies) {
 
-      this.composer.pass
-
-      this.composer.removePass(this.atmosphereShaderPass);
+      //this.composer.removePass(this.atmosphereShaderPass);
       
       this.atmosphereShaderPass = new ShaderPass(ShaderManager.PostProcessingShader(numBodies));
       this.composer.addPass(this.atmosphereShaderPass);
@@ -247,5 +230,3 @@ class SolarSystemRenderer {
     }
 
 }
-
-export { SolarSystemRenderer }

@@ -76,7 +76,7 @@ class WordGenerator {
     }
 
 
-    #GenerateGibberishNext (minSyllables = 2, maxSyllables = 3) {
+    #GenerateGibberishNext (minSyllables = 2, maxSyllables = 4) {
 
         const asciiLowercase = "abcdefghijklmnopqrstuvwxyz".split('');
 

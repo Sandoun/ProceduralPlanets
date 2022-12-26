@@ -31,28 +31,33 @@ uniform float lightIntensity;
 
 struct DirectionalLight {
   vec3 color;
-  vec3 direction; // light position, in camera coordinates
+  vec3 direction;
 };
 
 uniform DirectionalLight directionalLights[NUM_DIR_LIGHTS];
 
-vec3 calcOwnShadow (in vec3 sDirection, in vec3 normV, in vec3 color) {
+vec3 calcOwnShadow (in vec3 normV, in vec3 baseColor) {
 
-  float shadingMin = -5.0;
-  float shadingMax = .1;
-  float intensity = -3.0;
-  float intensityShadow = 10.0;
+  float darkIntensity = 3.0;
+  float lightIntensity = .8;
+  float shadowStart = -.3;
 
-  vec3 darkness = vec3(-1,-1,-1) * intensityShadow;
+  vec3 finalCol = baseColor * lightIntensity;
 
-  vec3 lightDarkRatio = (color + intensity) - darkness;
+  #if NUM_DIR_LIGHTS > 0           
+  for(int i = 0; i < NUM_DIR_LIGHTS; i++) {
 
-  float dotProd = dot(sDirection,normV);
+    vec3 sDirection = normalize(directionalLights[i].direction);
 
-  vec3 specLighting = vec3(1) * dotProd;
-  vec3 baseLighting = clamp(dotProd, shadingMin, shadingMax) * lightDarkRatio;
+    float dotProd = dot(sDirection,normV) + shadowStart;
+    vec3 addedDark = clamp((vec3(-1) * darkIntensity) * (dotProd * -1.0), -1., 0.0);
 
-  return baseLighting + specLighting;
+    finalCol += addedDark;
+
+  }
+  #endif
+
+  return finalCol;
 
 }
 
@@ -120,21 +125,31 @@ vec3 calcSurfaceColor (in float vertPos, in float steppedHeight) {
 
 }
 
+vec3 calcWaterColor (in vec3 normV) {
+  
+  float waveIntensity = 1.0; 
+
+  #if NUM_DIR_LIGHTS > 0           
+  for(int i = 0; i < NUM_DIR_LIGHTS; i++) {
+
+    vec3 sDirection = normalize(directionalLights[i].direction);
+    float dotProd = dot(sDirection,normV);
+
+    waveIntensity *= dotProd;
+
+  }
+  #endif
+
+  vec3 waveColor = (vec3(1.) * genWaveNoise) * waveIntensity;
+  vec3 baseColor = clamp(waterColor + waveColor, vec3(0), vec3(1.));
+
+  return baseColor;
+
+}
+
 void main () {
 
   vec4 final = vec4(0,0,0, 1);
-
-  //calculate lighting
-  vec4 addedLights = vec4(0,0,0,1.0);
-  #if NUM_DIR_LIGHTS > 0           
-  for(int i = 0; i < NUM_DIR_LIGHTS; i++) {
-    addedLights.rgb += calcOwnShadow(
-      directionalLights[i].direction, 
-      vecNormal, 
-      directionalLights[i].color
-    );
-  }
-  #endif
 
   //calculate terrain gradient
   float len = length(vUv);
@@ -144,22 +159,17 @@ void main () {
 
   //vertical positon on object 0-1 from bottom to top
   float verticalPos = calcVertPos(vUv, elevationMinMax.y);
-
   final.rgb = calcSurfaceColor(verticalPos, stepped);
 
   //elevation min water level
   if(len <= minWaterLevel) {
 
-    float intensity = 0.5;
-
-    vec3 waveColor = (vec3(1,1,1) * genWaveNoise) * intensity;
-
-    final.rgb = waterColor + waveColor;
+    final.rgb = calcWaterColor(vecNormal);
 
   }
-
+  
   //add lighting last
-  final *= addedLights;
+  final.rgb = calcOwnShadow(vecNormal, final.rgb);
 
   gl_FragColor = final;
 

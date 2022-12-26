@@ -1,5 +1,5 @@
 import { CelboyUI } from "./CelboyUI.js";
-import { SolarSystemRenderer } from "../SolarSystem/SolarSystemRenderer.js";
+import SolarSystemRenderer from "../SolarSystem/SolarSystemRenderer.js";
 
 class UiManager {
 
@@ -20,7 +20,9 @@ class UiManager {
 
         this.#BuildRoot();
 
-        this.#BuildCelBodies();
+        this.system.addEventListener("bodies-loaded", () => {
+            this.#BuildCelBodies();
+        });
 
     }
 
@@ -52,6 +54,8 @@ class UiManager {
     }
 
     #BuildCelBodies () {
+
+        this.celBodyContainer = [];
 
         for (const clbody of this.system.celestialBodys) {
             

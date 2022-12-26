@@ -9,7 +9,7 @@ import {
 } from '../Three/three.module.js'
 
 import * as UniformsUtils from '../Three/UniformsUtils.js'
-import { CelestialBody } from './CelestialBody.js';
+import { CelestialBody } from './Bodies/CelestialBody.js';
 
 class ShaderManager {
 
@@ -55,7 +55,7 @@ class ShaderManager {
             {
                 time: { type: "f", value: 1.0 },
                 waterColor : {type: 'vec3', value: new Color('rgb(0,0,255)')},
-                minWaterLevel : {type: 'float', value : body.minSurfacePoint + body.settings.water?.levelOffset ?? 0},
+                minWaterLevel : {type: 'float', value : body.waterSurfacePoint},
                 biomes: { value : biomesArr},
                 biomeGradients : { value : biomesTexture},
                 biomeNoiseScale : { value : body.settings.biomes.noiseScale },
