@@ -19,40 +19,39 @@ uniform float biomeNoiseScale;
 uniform float biomeBlending;
 
 //shared
-varying vec3 vUv;
+varying vec3 vUv; 
+varying vec3 vNormal;
 varying vec3 vecNormal;
+varying mat4 mViewMatrix;
+varying vec3 vViewPosition;
 
 //noise
 varying float genWaveNoise;
 varying float genBiomeNoise;
 
 //lighting
-uniform float lightIntensity;
-
-struct DirectionalLight {
+#define NUM_SUNS 1
+struct Sun {
   vec3 color;
-  vec3 direction;
+	vec3 position;
 };
-
-uniform DirectionalLight directionalLights[NUM_DIR_LIGHTS];
+uniform Sun suns[NUM_SUNS]; 
 
 vec3 calcOwnShadow (in vec3 normV, in vec3 baseColor) {
 
-  float darkIntensity = 3.0;
-  float lightIntensity = .8;
-  float shadowStart = -.3;
+  vec3 finalCol = baseColor;
 
-  vec3 finalCol = baseColor * lightIntensity;
+  #if NUM_SUNS > 0           
+  for(int i = 0; i < NUM_SUNS; i++) {
 
-  #if NUM_DIR_LIGHTS > 0           
-  for(int i = 0; i < NUM_DIR_LIGHTS; i++) {
+    //calc direction
+    vec3 sourcePos = suns[i].position;
+    vec3 norm = normalize(vNormal);
+    vec4 viewLightPos = mViewMatrix * vec4(sourcePos, 1.0);
+    vec3 lightVector = normalize(viewLightPos.xyz - vViewPosition);
+    float nDotL = clamp(dot(lightVector, norm), 0., 1.);
 
-    vec3 sDirection = normalize(directionalLights[i].direction);
-
-    float dotProd = dot(sDirection,normV) + shadowStart;
-    vec3 addedDark = clamp((vec3(-1) * darkIntensity) * (dotProd * -1.0), -1., 0.0);
-
-    finalCol += addedDark;
+    finalCol *= nDotL;
 
   }
   #endif
@@ -128,17 +127,6 @@ vec3 calcSurfaceColor (in float vertPos, in float steppedHeight) {
 vec3 calcWaterColor (in vec3 normV) {
   
   float waveIntensity = 1.0; 
-
-  #if NUM_DIR_LIGHTS > 0           
-  for(int i = 0; i < NUM_DIR_LIGHTS; i++) {
-
-    vec3 sDirection = normalize(directionalLights[i].direction);
-    float dotProd = dot(sDirection,normV);
-
-    waveIntensity *= dotProd;
-
-  }
-  #endif
 
   vec3 waveColor = (vec3(1.) * genWaveNoise) * waveIntensity;
   vec3 baseColor = clamp(waterColor + waveColor, vec3(0), vec3(1.));

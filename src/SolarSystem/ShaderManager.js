@@ -21,6 +21,11 @@ class ShaderManager {
             fPath : "/Shaders/Planet/fragment.glsl",
             shader : null,
         },
+        SunShader : {
+            vPath : "/Shaders/Sun/vertex.glsl",
+            fPath : "/Shaders/Sun/fragment.glsl",
+            shader : null,
+        },
         PPshader : {
             vPath : "/Shaders/PostProcess/vertex.glsl",
             fPath : "/Shaders/PostProcess/fragment.glsl",
@@ -50,10 +55,18 @@ class ShaderManager {
     static PlanetShaderMat (biomesArr, biomesTexture, body) {
 
         const merged = UniformsUtils.mergeUniforms([
-            UniformsLib.lights,
             UniformsLib.normalmap,
             {
                 time: { type: "f", value: 1.0 },
+                suns : { value : [
+                    {
+                        color : new Color(255,255,255),
+                        position : new Vector3(0,0,0),
+                    }
+                ]},
+                NUM_POINT_LIGHTS_ALT : { value : 1 },
+                IN_INV_PROJECTION_MATRIX : {value : new Matrix4()},
+                IN_INV_VIEW_MATRIX : {value : new Matrix4()},
                 waterColor : {type: 'vec3', value: new Color('rgb(0,0,255)')},
                 minWaterLevel : {type: 'float', value : body.waterSurfacePoint},
                 biomes: { value : biomesArr},
@@ -66,13 +79,33 @@ class ShaderManager {
         ]);
 
         const vert = ShaderManager.glslData.PlanetShader.shader.vertex;
-        const frag = ShaderManager.glslData.PlanetShader.shader.fragment;
+        let frag = ShaderManager.glslData.PlanetShader.shader.fragment;
+        frag = frag.replace("#define BIOMES_SIZE 3", `#define BIOMES_SIZE ${biomesArr.length}`);
 
         return new ShaderMaterial ({
             uniforms: merged,
             vertexShader: vert,
-            fragmentShader: frag.replace("#define BIOMES_SIZE 3", `#define BIOMES_SIZE ${biomesArr.length}`),
-            lights: true
+            fragmentShader: frag,
+        });
+
+    }
+
+    static SunShaderMat () {
+
+        const merged = UniformsUtils.mergeUniforms([
+            UniformsLib.normalmap,
+            {
+                time: { type: "f", value: 1.0 },
+            }
+        ]);
+
+        const vert = ShaderManager.glslData.SunShader.shader.vertex;
+        const frag = ShaderManager.glslData.SunShader.shader.fragment;
+
+        return new ShaderMaterial ({
+            uniforms: merged,
+            vertexShader: vert,
+            fragmentShader: frag,
         });
 
     }
@@ -83,13 +116,20 @@ class ShaderManager {
             {
                 IN_INV_PROJECTION_MATRIX : {value : new Matrix4()},
                 IN_INV_VIEW_MATRIX : {value : new Matrix4()},
+                suns : { 
+                    value : [
+                        {
+                            color : new Color(255,255,255),
+                            position : new Vector3(0,0,0),
+                        }
+                    ]
+                },
                 tDiffuse : { value: null },
                 tDepth : { value: null },
                 worldSpaceCamPos : {value : new Vector3(0,0,0)},
                 shadeableBodies : {
                     value : []
                 }
-
             }
         ]);
 

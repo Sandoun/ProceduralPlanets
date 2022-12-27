@@ -31,13 +31,27 @@ const gui = new GUI();
 
 let debugOptions = {
 
-  seed : "testseed",
-
+  seed : Date.now().toString(), //"testseed",
+  speedMultiplicator : 1,
+  showOrbits : true,
   regenerateAll : () => {
     GenerateSystem();
   }
 
 };
+
+function SetupDebugUI () {
+
+  gui.add( debugOptions, 'seed').onChange((x) => RebuildPlanet());
+  gui.add( debugOptions, 'speedMultiplicator', [0, .5, 1, 2, 10, 100]).onChange((x) => {
+    solarSystem.SetSpeedMultiplicator(x);
+  });
+  gui.add( debugOptions, 'showOrbits').onChange((x) => {
+    solarSystem.SetAllOrbitsVisibility(x);
+  });
+  gui.add( debugOptions, 'regenerateAll');
+
+}
 
 PreLoadFiles();
 
@@ -61,8 +75,6 @@ function Main () {
   //debug controls
   const controls = new OrbitControls( camera, renderer.domElement );
 
-  SetupLighting();
-
   RenderDebug();
 
   GenerateSystem();
@@ -70,13 +82,6 @@ function Main () {
   uiManager = new UiManager(solarSystem);
 
   animate();
-
-}
-
-function SetupDebugUI () {
-
-  gui.add( debugOptions, 'seed').onChange((x) => RebuildPlanet());
-  gui.add( debugOptions, 'regenerateAll');
 
 }
 
@@ -114,26 +119,6 @@ function SetupRenderer () {
 
 }
 
-function SetupLighting () {
-
-  const centerObj = new THREE.Object3D();
-  scene.add(centerObj);
-
-  //light
-  const light = new THREE.DirectionalLight( 'rgb(0,0,0)', .3);
-  light.castShadow = true;
-  light.position.set(100, 100, 100);
-  light.target = centerObj;
-  scene.add( light );
-
-  const refCube = new THREE.BoxGeometry(1,1,1);
-  const refMat = new THREE.MeshBasicMaterial( {color: 0x00ff00} );
-  const cube = new THREE.Mesh( refCube, refMat );
-  cube.position.set(100, 100, 100);
-  scene.add( cube );
-
-}
-
 function animate() {
 
   requestAnimationFrame( animate );
@@ -152,7 +137,7 @@ function RenderDebug () {
   //y is green
   // z is blue
   const axesHelper = new THREE.AxesHelper( 5 );
-  axesHelper.translateZ(50);
+  //axesHelper.translateZ(50);
   scene.add( axesHelper );
 
 }

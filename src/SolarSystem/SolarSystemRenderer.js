@@ -33,14 +33,16 @@ import {
     DepthTexture,
     RGBFormat,
     UnsignedShortType,
+    LineDashedMaterial,
 } from '../Three/three.module.js';
 
 import { EffectComposer } from '../Three/Postprocessing/EffectComposer.js';
 import { ShaderPass } from '../Three/Postprocessing/ShaderPass.js';
 import { ShaderManager } from './ShaderManager.js';
-import { CelestialBody } from './Bodies/CelestialBody.js';
+import { CelestialBody, Orbit } from './Bodies/CelestialBody.js';
 import CelestialBodyFactory from './Bodies/CelestialBodyFactory.js';
 import { Prando } from './Prando.js';
+import { join } from '../UserInterface/Lit/lit-all.min.js';
 
 export default class SolarSystemRenderer extends EventTarget {
 
@@ -61,6 +63,13 @@ export default class SolarSystemRenderer extends EventTarget {
 
     /**@type {ShaderPass} */
     atmosphereShaderPass;
+
+    #lastDeltaTime = 0;
+
+    #elapsedTimeTotal = 0;
+
+    /** @type {Orbit[]} Orbits this body has */
+    orbits = [];
 
     /**
      * Sets up a new solar system renderer
@@ -88,11 +97,13 @@ export default class SolarSystemRenderer extends EventTarget {
 
         //time
         this.startTime = Date.now();
+        this.speedMultiplicator = 1.0;
 
         this.object3D = new Object3D();
+        this.shaderSunsStructs = [];
+
 
         this.#SetupDepthRenderer();
-
         this.scene.add(this.object3D);
 
     }
@@ -100,17 +111,80 @@ export default class SolarSystemRenderer extends EventTarget {
     
     OnAnimateLoop () {
 
-        var elapsedMilliseconds = Date.now() - this.startTime;
-        var elapsedSeconds = elapsedMilliseconds / 1000.;
+        const deltaThisCycle = Date.now();
+        const deltaTime = deltaThisCycle - this.#lastDeltaTime;
+
+        const elapsedMilliseconds = Date.now() - this.startTime;
+        //const multipliedSpeed = elapsedMilliseconds * this.speedMultiplicator;
+
+        this.#elapsedTimeTotal += deltaTime * this.speedMultiplicator;
 
         this.#UpdateAtmosShaderPass();
         this.renderer.setRenderTarget(this.depthRenderTarget);
 
+        //render planet and others orbit
+
+        //let the body rotate
+        /* const rotAngle = _t / ((this.settings.rotation.periodSeconds * 1000) / 360) * -1;
+        this.Object.rotation.y = rotAngle * (Math.PI / 180);
+        this.Object.rotation.x = this.settings.rotation.axisTilt * (Math.PI / 180); */
+
+        //let the moons orbit
+        for (let i = 0; i < this.orbits.length; i++) {
+            
+            const orbit = this.orbits[i];
+
+            //calc periodFactor
+            if(orbit.isReversed) {
+                orbit.angle = this.#elapsedTimeTotal / ((orbit.periodSeconds * 1000) / 360) * -1;
+            } else {
+                orbit.angle = this.#elapsedTimeTotal / ((orbit.periodSeconds * 1000) / 360);
+            }
+
+            const angleRadians = orbit.angle * (Math.PI / 180);
+            const newX = Math.cos(angleRadians) * orbit.distanceToCenter;
+            const newY = Math.sin(angleRadians) * orbit.distanceToCenter;
+            
+            orbit.attachedBody.Object.position.set(newX + this.object3D.position.x, this.object3D.position.y, newY + this.object3D.position.z);
+
+            //determine if the orbit ring is visual
+            /** @type {Mesh} */
+            const ring = this.orbitRings[i];
+            ring.visible = orbit.isVisual;
+
+            ring.position.set(this.object3D.position.x, this.object3D.position.y, this.object3D.position.z);
+
+        }
+
         //update all bodys on animate
         if(!this.celestialBodys) return;
-        for (const body of this.celestialBodys) {
-            body.OnTimeUpdate(elapsedMilliseconds);
+
+        this.shaderSunsStructs = [];
+        for (const body of this.celestialBodys) { 
+            if(body.type == "Sun") {
+                this.shaderSunsStructs.push({
+                    color : new Color(255,255,255),
+                    position : new Vector3(
+                        body.Object.position.x, 
+                        body.Object.position.y, 
+                        body.Object.position.z, 
+                    ),
+                });
+            }
         }
+        
+        for (const body of this.celestialBodys) {
+
+            //set position of suns for each shaded body
+            if(body.type != "Sun") {
+                body.CurrentMesh.material.uniforms.suns.value = this.shaderSunsStructs;
+            }
+
+            body.OnTimeUpdate(this.#elapsedTimeTotal, elapsedMilliseconds);
+
+        }
+
+        this.#lastDeltaTime = deltaThisCycle;
 
     }
 
@@ -135,14 +209,15 @@ export default class SolarSystemRenderer extends EventTarget {
         this.bodyFactory = new CelestialBodyFactory(this);
 
         this.celestialBodys = await this.bodyFactory.GenerateAsync();
-    
+        
+        console.log(this);
         console.log(this.celestialBodys)
 
         if(this.celestialBodys == null || this.celestialBodys.length <= 0) return;
 
         let numBodiesWithAtmos = 0;
         for (let i = 0; i < this.celestialBodys.length; i++) {
-            
+        
             this.object3D.add(this.celestialBodys[i].Object);
             
             if(this.celestialBodys[i].settings.atmosphere != undefined)
@@ -156,6 +231,8 @@ export default class SolarSystemRenderer extends EventTarget {
         if(numBodiesWithAtmos > 0)
             this.#SetupAtmosphereRenderer(numBodiesWithAtmos);
         
+        this.SetAllOrbitsVisibility(true);
+
     }
 
     #SetupDepthRenderer () {
@@ -196,6 +273,8 @@ export default class SolarSystemRenderer extends EventTarget {
         let planetShadingStructs = [];
         for (const body of this.celestialBodys) {
 
+            if(!body.settings.atmosphere) continue;
+
             const bodyRadius = body.maxSurfacePoint;
 
             const r = body.settings.atmosphere.waveLengthRed;
@@ -211,11 +290,19 @@ export default class SolarSystemRenderer extends EventTarget {
             let _scatteringCoefficients = new Vector3(scatterR, scatterG, scatterB);
             let _atmoRadius = bodyRadius * (body.settings.atmosphere.scale + 1.0);
 
+            //calculate average point where the sunlight is coming from to 
+            //avoid rendering multiple atmosphere passes for each light source
+            let sunPositions = [];
+            for (let i = 0; i < this.shaderSunsStructs.length; i++) {
+                sunPositions.push(this.shaderSunsStructs[i].position);
+            }
+            const centerMassPoint = SolarSystemRenderer.CalculateCenterOfMassPoints(sunPositions);
+
             planetShadingStructs.push({
                 PlanetCentre : body.Object.position,
                 PlanetRadius : bodyRadius,
                 AtmosphereRadius : _atmoRadius,
-                DirToSun : new Vector3(1,1,1),
+                DirToSun : centerMassPoint.sub(body.Object.position).normalize(),
                 NumInScatteringPoints : 10,
                 NumOpticalDepthPoints : 10,
                 ScatteringCoefficients : _scatteringCoefficients,
@@ -226,6 +313,130 @@ export default class SolarSystemRenderer extends EventTarget {
         }
 
         this.atmosphereShaderPass.uniforms.shadeableBodies.value = planetShadingStructs;
+
+    }
+
+    /**
+     * Calculates the center of mass point for a point cloud
+     * @param {Vector3[]} points 
+     * @returns {Vector3} Center of mass point
+     */
+    static CalculateCenterOfMassPoints (points) {
+        let x = 0, y = 0, z = 0;
+        for (let i = 0; i < points.length; i++) {
+            x += points[i].x;
+            y += points[i].y;
+            z += points[i].z;
+        }
+        return new Vector3(
+            x / points.length,
+            y / points.length,
+            z / points.length,
+        );
+    }
+
+    //orbit rendering
+
+    /**
+     * Generates orbital rings for this system
+     */
+    GenerateOrbitRings () {
+
+        this.orbitRings = [];
+
+        for (let i = 0; i < this.orbits.length; i++) {
+
+            const orbit = this.orbits[i];
+            const segmentCount = Math.floor(orbit.distanceToCenter);
+            const radius = orbit.distanceToCenter;
+
+            let verts = [];
+
+            for (var j = 0; j <= segmentCount; j++) {
+                
+                var theta = (j / segmentCount) * Math.PI * 2;
+                const vec = new Vector3(
+                    Math.cos(theta) * radius,
+                    0,
+                    Math.sin(theta) * radius,
+                );
+
+                verts.push(vec);         
+                
+            }
+
+            const ring = new Line(
+                new BufferGeometry().setFromPoints(verts),
+                new LineDashedMaterial({ 
+                    color: 0xFFFFFF,
+                    opacity : .5,
+                    transparent: true,
+                    linewidth: 1,
+                    scale: 1,
+                    dashSize: 3,
+                    gapSize: 3,
+                })
+            );
+
+            ring.computeLineDistances();
+
+            this.orbitRings.push(ring);
+            this.scene.add(ring);
+
+        }
+
+    }
+
+    /**
+     * 
+     * @param {CelestialBody} body 
+     * @param {Number} distanceToCenter 
+     * @param {Number} angle 
+     * @returns {Orbit} the calculated orbit
+     */
+    AttachOrbitingBody (body, distanceToCenter, angle, periodSeconds, reversed) {
+
+        const orb = new Orbit(body, undefined, distanceToCenter, angle, periodSeconds, reversed);
+        this.orbits.push(orb);
+        return orb;
+
+    }
+
+    /**
+     * 
+     * @param {Boolean} state 
+     */
+    SetAllOrbitsVisibility (state = true) {
+
+        for (let i = 0; i < this.orbits.length; i++) {
+         
+            this.orbits[i].isVisual = state;
+
+        }
+
+        for (let i = 0; i < this.celestialBodys.length; i++) {
+            
+            if(this.celestialBodys[i].orbits && this.celestialBodys[i].orbits.length > 0) {
+
+                for (let j = 0; j < this.celestialBodys[i].orbits.length; j++) {
+         
+                    this.celestialBodys[i].orbits[j].isVisual = state;
+
+                }
+
+            }
+
+        }
+
+    }
+
+    /**
+     * 
+     * @param {Number} mult 
+     */
+    SetSpeedMultiplicator (mult) {
+
+        this.speedMultiplicator = mult;
 
     }
 

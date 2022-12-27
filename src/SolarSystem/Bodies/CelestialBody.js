@@ -27,12 +27,16 @@ import {
     UnsignedByteType,
     UniformsLib,
     ShaderLib,
+    Sphere,
+    LineDashedMaterial,
+    PointLight,
 } from '../../Three/three.module.js';
 
 import { ShaderManager } from '../ShaderManager.js';
 import { Perlin } from '../Perlin.js';
 import { Prando } from '../Prando.js';
 import { WordGenerator } from '../WordGenerator.js';
+import * as BufferGeometryUtils from '../../Three/BufferGeometryUtils.js';
 import SolarSystemRenderer from '../SolarSystemRenderer.js';
 
 class CelestialBody {
@@ -135,7 +139,7 @@ class CelestialBody {
     /** @type {String} Naming of the body */
     name;
 
-    /** @type {('Generic'|'Planet'|'Moon')} Type of celestial body it is */
+    /** @type {('Generic'|'Sun'|'Planet'|'Moon')} Type of celestial body it is */
     type;
 
     /** @type {Orbit} Own orbit of the body*/
@@ -206,27 +210,13 @@ class CelestialBody {
         this.#render(merged);
         this.Object.attach(this.CurrentMesh);
 
-    }
-
-    /**
-     * 
-     * @param {CelestialBody} body 
-     * @param {Number} distanceToCenter 
-     * @param {Number} angle 
-     * @returns {Orbit} the calculated orbit
-     */
-    AttachOrbitingBody (body, parent, distanceToCenter, angle, periodSeconds, reversed) {
-
-        const orb = new Orbit(body, parent, distanceToCenter, angle, periodSeconds, reversed);
-        this.orbits.push(orb);
-        return orb;
 
     }
 
-    OnTimeUpdate (_t) {
+    OnTimeUpdate (_t, _tDateBased) {
 
         //update time on shader
-        this.CurrentMesh.material.uniforms.time.value = _t / 30;
+        this.CurrentMesh.material.uniforms.time.value = _tDateBased;
 
         //let the body rotate
         const rotAngle = _t / ((this.settings.rotation.periodSeconds * 1000) / 360) * -1;
@@ -250,6 +240,12 @@ class CelestialBody {
             const newY = Math.sin(angleRadians) * orbit.distanceToCenter;
             
             orbit.attachedBody.Object.position.set(newX + this.Object.position.x, this.Object.position.y, newY + this.Object.position.z);
+
+            //determine if the orbit ring is visual
+            /** @type {Mesh} */
+            const ring = this.orbitRings[i];
+            ring.visible = orbit.isVisual;
+            ring.position.set(this.Object.position.x, this.Object.position.y, this.Object.position.z);
 
         }
 
@@ -278,7 +274,11 @@ class CelestialBody {
 
                 let pointOnRegularSphere = pointOnUnitCube.normalize();
 
-                let noiseVal = this.#evaluateNoiseOnPoint(pointOnRegularSphere);
+                let noiseVal = this.settings.size.minimalCentre;
+                if(this.type != "Sun") {
+                    noiseVal = this.#evaluateNoiseOnPoint(pointOnRegularSphere);
+                } 
+
                 let pointOnSphere = pointOnRegularSphere.clone().multiplyScalar(noiseVal);
 
                 //calc min max points
@@ -359,17 +359,31 @@ class CelestialBody {
             this.TextureMeshes = [];
         }
 
-        //mesh planet
+        //mesh objectz
         let geometry = new BufferGeometry().setFromPoints(_verts);
+        geometry = BufferGeometryUtils.mergeVertices(geometry);
         geometry.computeVertexNormals();
 
-        let biomesData = this.#generateTexture(this.settings.biomes.layers);
+        //if planet cel body with terrain generate with
 
-        const material = ShaderManager.PlanetShaderMat(
-            biomesData.biomes,
-            biomesData.texture,
-            this,
-        );
+        /** @type {ShaderMaterial} */
+        let material;
+
+        if(this.type == "Sun") {
+
+            material = ShaderManager.SunShaderMat();
+
+        } else if (this.settings.biomes != undefined) {
+
+            let biomesData = this.#generateTexture(this.settings.biomes.layers);
+
+            material = ShaderManager.PlanetShaderMat(
+                biomesData.biomes,
+                biomesData.texture,
+                this,
+            );
+
+        }
 
         this.CurrentMesh = new Mesh(geometry, material);
         this.CurrentMesh.receiveShadow = true;
@@ -496,6 +510,79 @@ class CelestialBody {
 
     }
 
+    //orbits
+
+    /**
+     * 
+     * @param {CelestialBody} body 
+     * @param {Number} distanceToCenter 
+     * @param {Number} angle 
+     * @returns {Orbit} the calculated orbit
+     */
+    AttachOrbitingBody (body, parent, distanceToCenter, angle, periodSeconds, reversed) {
+
+        const orb = new Orbit(body, parent, distanceToCenter, angle, periodSeconds, reversed);
+        this.orbits.push(orb);
+        return orb;
+
+    }
+
+    /**
+     * Generates orbital rings for this body
+     */
+    GenerateOrbitRings () {
+
+        /** @type {SolarSystemRenderer} */
+        const solSystem = this.solSystem;
+
+        if(solSystem == undefined) return;
+        
+        this.orbitRings = [];
+
+        for (let i = 0; i < this.orbits.length; i++) {
+
+            const orbit = this.orbits[i];
+            const segmentCount = Math.floor(orbit.distanceToCenter);
+            const radius = orbit.distanceToCenter;
+
+            let verts = [];
+
+            for (var j = 0; j <= segmentCount; j++) {
+                
+                var theta = (j / segmentCount) * Math.PI * 2;
+                const vec = new Vector3(
+                    Math.cos(theta) * radius,
+                    0,
+                    Math.sin(theta) * radius,
+                );
+
+                verts.push(vec);         
+                
+            }
+
+            const ring = new Line(
+                new BufferGeometry().setFromPoints(verts),
+                new LineDashedMaterial({ 
+                    color: 0xFFFFFF,
+                    opacity : .5,
+                    transparent: true,
+                    linewidth: 1,
+                    scale: 1,
+                    dashSize: 3,
+                    gapSize: 3,
+                })
+            );
+
+            ring.computeLineDistances();
+
+            this.orbitRings.push(ring);
+            solSystem.scene.add(ring);
+
+        }
+
+    }
+
+    //helpers
     #clamp (num, min, max) {
 
         return Math.min(Math.max(num, min), max);
@@ -550,6 +637,9 @@ class Orbit {
         this.periodSeconds = periodSeconds;
 
         this.isReversed = reversed;
+
+        /** @type {Boolean} */
+        this.isVisual = false;
 
     }
 

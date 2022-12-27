@@ -5,15 +5,17 @@ uniform float minWaterLevel;
 uniform float biomeNoiseFrequ;
 
 varying vec3 vUv; 
-
-varying vec3 vecPos;
+varying vec3 vNormal;
 varying vec3 vecNormal;
+varying mat4 mViewMatrix;
+varying vec3 vViewPosition;
 
 //wave noise
 varying float genWaterNoise;
 varying float genWaveNoise;
 varying float genBiomeNoise;
 
+//noise generation
 vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
 vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
 vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
@@ -50,14 +52,17 @@ float pnoise(vec3 P) {
 void main() {
 
   vUv = position; 
-  vecPos = (modelViewMatrix * vec4(position, 1.0)).xyz;
+  vNormal = normalMatrix * normal;
+  vViewPosition = (modelViewMatrix * vec4(position, 1.0)).xyz;
+  mViewMatrix = viewMatrix;
+  
   vecNormal = (modelViewMatrix * vec4(normal, 0.0)).xyz;
-
+  
   vec3 newPosition = position;
 
   //generate wave noise
   float waveNoiseFrequ = 20.0;
-  float tWaveNoise = (time / 2000.0);
+  float tWaveNoise = (time / 100000.0);
   genWaveNoise = clamp(pnoise( waveNoiseFrequ * (position +  tWaveNoise)), 0., 1.);
 
   //gen biome noise

@@ -7,13 +7,15 @@ import SolarSystemRenderer from "../SolarSystemRenderer.js";
 export default class CelestialBodyFactory {
 
     //configuration
+    minSunSize = 30;
+    maxSunSize = 150;
     maxMoonsPerPlanet = 1;
     minMoonSizeOfParent = .25;
     maxMoonSizeOfParent = .75;
     minDistanceMoons = 20;
     maxDistanceMoons = 100;
-    moonOrbitPeriodSecondsMin = 10;
-    moonOrbitPeriodSecondsMax = 60;
+    moonOrbitPeriodSecondsMin = 60;
+    moonOrbitPeriodSecondsMax = 60 * 10;
     maxAxisTilt = 15;
 
     /**
@@ -38,24 +40,58 @@ export default class CelestialBodyFactory {
      */
     async GenerateAsync () {
 
-        const numOfPlanets = this.rngGen.nextInt(1, 1);
-
         let parallelMethods = [];
         let generatedBodies = [];
 
+        const numOfPlanets = this.rngGen.nextInt(1, 1);
+        const numOfSuns = this.rngGen.nextInt(1, 1);
+
+        let planetStartDist = 0;
+
+        //suns
+        for (let i = 0; i < numOfSuns; i++) {
+           
+            const sun = this.#SunRandom();
+            generatedBodies.push(sun);
+
+            //gen planet geometry threaded
+            parallelMethods.push((async () => {
+                sun.Generate();
+            })());
+
+            planetStartDist += sun.settings.size.minimalCentre * 2;
+
+        }
+
+        //generate planets
         for (let i = 0; i < numOfPlanets; i++) {
 
             //genrate N moons random
             const nMoons = 1;
 
+            //orbit offset from planet centre
+            const plOffset = this.rngGen.next(this.minDistanceMoons, this.maxDistanceMoons);
+            //orbital peroid in seconds
+            const plOrbitPeroidS = this.rngGen.nextInt(this.moonOrbitPeriodSecondsMin, this.moonOrbitPeriodSecondsMax);
+            //rand betweeen 0 and 360 deg
+            const plStartAngleOffset = this.rngGen.next(0, 360);
+            //probability of reverse orbit 20%
+            const plReversedOrbit = this.rngGen.nextInt(1, 10) <= 2;
+
             //generate planet random
             const planet = this.#PlanetRandom(nMoons);
             generatedBodies.push(planet);
+
+            planetStartDist += plOffset + (planet.settings.size.minimalCentre * 2);
 
             //gen planet geometry threaded
             parallelMethods.push((async () => {
                 planet.Generate();
             })());
+
+            const orb = this.solSystem.AttachOrbitingBody(planet, planetStartDist, plStartAngleOffset, plOrbitPeroidS, plReversedOrbit);
+            planet.ownOrbit = orb;
+            planet.indexOrbitalPlane = i;
 
             //build moons
             let moonStartDist = 0;
@@ -65,11 +101,11 @@ export default class CelestialBodyFactory {
                 //orbit offset from planet centre
                 const moonOffset = planet.settings.size.minimalCentre + this.rngGen.next(this.minDistanceMoons, this.maxDistanceMoons);
                 //orbital peroid in seconds
-                const orbitPeroidS = this.rngGen.nextInt(this.moonOrbitPeriodSecondsMin, this.moonOrbitPeriodSecondsMax);
+                const moonOrbitPeroidS = this.rngGen.nextInt(this.moonOrbitPeriodSecondsMin, this.moonOrbitPeriodSecondsMax);
                 //rand betweeen 0 and 360 deg
-                const startAngleOffset = this.rngGen.next(0, 360);
+                const moonStartAngleOffset = this.rngGen.next(0, 360);
                 //probability of reverse orbit 20%
-                const reversedOrbit = this.rngGen.nextInt(1, 10) <= 2;
+                const moonReversedOrbit = this.rngGen.nextInt(1, 10) <= 2;
 
                 //generate moon random
                 const moon = this.#MoonRandom(planet);
@@ -83,17 +119,47 @@ export default class CelestialBodyFactory {
                     moon.Object.translateX(moonStartDist);
                 })());  
 
-                const orb = planet.AttachOrbitingBody(moon, planet, moonStartDist, startAngleOffset, orbitPeroidS, reversedOrbit);
+                const orb = planet.AttachOrbitingBody(moon, planet, moonStartDist, moonStartAngleOffset, moonOrbitPeroidS, moonReversedOrbit);
                 moon.ownOrbit = orb;
                 moon.indexOrbitalPlane = i;
                 moon.name = `${planet.name} ${this.#romanize(i + 1)}`;
-                
+
             }
+
+            planet.solSystem = this.solSystem;
+            planet.GenerateOrbitRings();
+            this.solSystem.GenerateOrbitRings();
 
         }
 
         await Promise.all(parallelMethods);
         return generatedBodies;
+
+    }
+
+    #SunRandom () {
+
+        const minCentre = this.rngGen.next(this.minSunSize, this.maxSunSize);
+
+        let body = new CelestialBody({
+            seed : this.rngGen.nextInt(0, Number.MAX_SAFE_INTEGER),
+            size : {
+                resolution : Math.min(100, Math.floor(minCentre * 10)),
+                minimalCentre : minCentre,
+            },
+            atmosphere : undefined,
+            water : undefined,
+            biomes : undefined,
+            rotation : {
+                periodSeconds : this.rngGen.next(-this.moonOrbitPeriodSecondsMax, this.moonOrbitPeriodSecondsMax),
+                axisTilt : this.rngGen.next(-this.maxAxisTilt, this.maxAxisTilt)
+            }
+        });
+
+        body.type = "Sun";
+        body.name = "Sun";//this.wordGenerator.GeneratePlanetNameNext();
+
+        return body;
 
     }
 
@@ -111,7 +177,7 @@ export default class CelestialBodyFactory {
                 waveLengthRed : this.rngGen.next(0,1500),
                 waveLengthGreen : this.rngGen.next(0,1000),
                 waveLengthBlue : this.rngGen.next(0,1000),
-                scatteringStrength : 2.0,
+                scatteringStrength : 1.0,
                 scale : 1.0,
                 fallOff : this.rngGen.next(10, 40),
                 instensity : this.rngGen.next(1.0, 2.0),

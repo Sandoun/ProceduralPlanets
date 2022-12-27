@@ -143,7 +143,11 @@ export class PlanetInfo extends LitElement {
         }
         .visible {
             opacity : var(--dist-opa);
-            transition: opacity 1s;
+            transition: opacity .1s;
+        }
+        .visible:hover {
+            transition: opacity .1s;
+            opacity : 1;
         }
         .hidden {
             opacity : 0;
