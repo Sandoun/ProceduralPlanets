@@ -64,6 +64,9 @@ export default class SolarSystemRenderer extends EventTarget {
     /**@type {ShaderPass} */
     atmosphereShaderPass;
 
+    /**@type {ShaderPass} */
+    sunPostShaderPass;
+
     #lastDeltaTime = 0;
 
     #elapsedTimeTotal = 0;
@@ -120,6 +123,7 @@ export default class SolarSystemRenderer extends EventTarget {
         this.#elapsedTimeTotal += deltaTime * this.speedMultiplicator;
 
         this.#UpdateAtmosShaderPass();
+        this.#UpdateSunPostShaderPass(elapsedMilliseconds);
         this.renderer.setRenderTarget(this.depthRenderTarget);
 
         //render planet and others orbit
@@ -163,12 +167,13 @@ export default class SolarSystemRenderer extends EventTarget {
         for (const body of this.celestialBodys) { 
             if(body.type == "Sun") {
                 this.shaderSunsStructs.push({
-                    color : new Color(255,255,255),
+                    color : new Color(1.0,1.0,1.0),
                     position : new Vector3(
                         body.Object.position.x, 
                         body.Object.position.y, 
                         body.Object.position.z, 
                     ),
+                    radius : body.settings.size.minimalCentre,
                 });
             }
         }
@@ -227,6 +232,8 @@ export default class SolarSystemRenderer extends EventTarget {
 
         this.dispatchEvent(new Event("bodies-loaded"));
 
+        this.#SetupSunPostProcessRenderer();
+
         //add the pp shader with num of shaded bodies
         if(numBodiesWithAtmos > 0)
             this.#SetupAtmosphereRenderer(numBodiesWithAtmos);
@@ -256,10 +263,17 @@ export default class SolarSystemRenderer extends EventTarget {
 
       //this.composer.removePass(this.atmosphereShaderPass);
       
-      this.atmosphereShaderPass = new ShaderPass(ShaderManager.PostProcessingShader(numBodies));
+      this.atmosphereShaderPass = new ShaderPass(ShaderManager.PostProcessingPlanetShader(numBodies));
       this.composer.addPass(this.atmosphereShaderPass);
 
     }
+
+    #SetupSunPostProcessRenderer (numBodies) {
+
+        this.sunPostShaderPass = new ShaderPass(ShaderManager.PostProcessingSunShader());
+        this.composer.addPass(this.sunPostShaderPass);
+  
+      }
 
     #UpdateAtmosShaderPass () {
 
@@ -316,6 +330,21 @@ export default class SolarSystemRenderer extends EventTarget {
 
     }
 
+    #UpdateSunPostShaderPass (_t) {
+
+        if(this.sunPostShaderPass == null || this.camera == null) return;
+
+        this.sunPostShaderPass.uniforms.time.value = _t;
+        this.sunPostShaderPass.uniforms.worldSpaceCamPos.value = this.camera.getWorldPosition(new Vector3());
+        this.sunPostShaderPass.uniforms.IN_INV_PROJECTION_MATRIX.value = this.camera.projectionMatrixInverse;
+        this.sunPostShaderPass.uniforms.IN_INV_VIEW_MATRIX.value = this.camera.matrix;
+        this.sunPostShaderPass.uniforms.tDepth.value = this.depthRenderTarget.depthTexture;
+        
+        if(this.shaderSunsStructs.length > 0)
+            this.sunPostShaderPass.uniforms.suns.value = this.shaderSunsStructs;
+
+    }
+
     /**
      * Calculates the center of mass point for a point cloud
      * @param {Vector3[]} points 
@@ -369,12 +398,12 @@ export default class SolarSystemRenderer extends EventTarget {
                 new BufferGeometry().setFromPoints(verts),
                 new LineDashedMaterial({ 
                     color: 0xFFFFFF,
-                    opacity : .5,
+                    opacity : .3,
                     transparent: true,
                     linewidth: 1,
                     scale: 1,
                     dashSize: 3,
-                    gapSize: 3,
+                    gapSize: 10,
                 })
             );
 

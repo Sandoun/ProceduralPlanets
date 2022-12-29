@@ -31,7 +31,7 @@ const gui = new GUI();
 
 let debugOptions = {
 
-  seed : Date.now().toString(), //"testseed",
+  seed : "testseed",//Date.now().toString(), //,
   speedMultiplicator : 1,
   showOrbits : true,
   regenerateAll : () => {
@@ -102,10 +102,10 @@ function SetupRenderer () {
   renderer.shadowMap.enabled = true;
   renderer.setSize(defaultRendererW, defaultRendererH);
 
-  camera = new THREE.PerspectiveCamera( 75, aspect, .1, 1000 );
-  camera.position.x = 20;
-  camera.position.y = 20;
-  camera.position.z = -20;
+  camera = new THREE.PerspectiveCamera( 60, aspect, .1, 5000 );
+  camera.position.x = 200;
+  camera.position.y = 200;
+  camera.position.z = -200;
   camera.lookAt(0,0,0);
 
   //post processing

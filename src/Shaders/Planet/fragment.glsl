@@ -34,6 +34,7 @@ varying float genBiomeNoise;
 struct Sun {
   vec3 color;
 	vec3 position;
+  float radius;
 };
 uniform Sun suns[NUM_SUNS]; 
 

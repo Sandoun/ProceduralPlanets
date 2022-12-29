@@ -26,7 +26,7 @@ import './CustomConverters.js';
 //general ui wrapper
 class CelboyUI {
 
-    static maxDistance = 150;
+    static maxDistance = 1000;
 
     /**
      * @param {UiManager} manager 
@@ -43,6 +43,12 @@ class CelboyUI {
         this.infoEl.celBodyInfo = this.body;
 
         this.manager.rootEl.appendChild(this.infoEl)
+
+        this.maxDistanceAdj = CelboyUI.maxDistance;
+
+        if(this.body.type == "Moon") {
+            this.maxDistanceAdj /= 2;
+        }
 
     }
 
@@ -62,12 +68,12 @@ class CelboyUI {
         const matrix = new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
         frustum.setFromProjectionMatrix(matrix)
         
-        this.infoEl.isVisible = frustum.containsPoint(worldPos) && dist <= CelboyUI.maxDistance;
+        this.infoEl.isVisible = frustum.containsPoint(worldPos) && dist <= this.maxDistanceAdj;
         this.infoEl.distToCam = dist;
 
         if(!this.infoEl.isVisible) return;
 
-        this.infoEl.distOpacity = (CelboyUI.maxDistance - dist) / (CelboyUI.maxDistance / 2);
+        this.infoEl.distOpacity = (this.maxDistanceAdj - dist) / (this.maxDistanceAdj / 2);
         this.infoEl.zIdx = Math.floor(CelboyUI.maxDistance - dist);
 
         //wait for it to render

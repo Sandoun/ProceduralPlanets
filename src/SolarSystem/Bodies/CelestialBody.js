@@ -564,7 +564,7 @@ class CelestialBody {
                 new BufferGeometry().setFromPoints(verts),
                 new LineDashedMaterial({ 
                     color: 0xFFFFFF,
-                    opacity : .5,
+                    opacity : .2,
                     transparent: true,
                     linewidth: 1,
                     scale: 1,

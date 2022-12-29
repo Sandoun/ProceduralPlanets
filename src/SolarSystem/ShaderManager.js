@@ -26,9 +26,14 @@ class ShaderManager {
             fPath : "/Shaders/Sun/fragment.glsl",
             shader : null,
         },
-        PPshader : {
-            vPath : "/Shaders/PostProcess/vertex.glsl",
-            fPath : "/Shaders/PostProcess/fragment.glsl",
+        PPshaderPlanet : {
+            vPath : "/Shaders/PostProcessPlanet/vertex.glsl",
+            fPath : "/Shaders/PostProcessPlanet/fragment.glsl",
+            shader : null,
+        },
+        PPshaderSun : {
+            vPath : "/Shaders/PostProcessSun/vertex.glsl",
+            fPath : "/Shaders/PostProcessSun/fragment.glsl",
             shader : null,
         },
     };
@@ -110,7 +115,7 @@ class ShaderManager {
 
     }
 
-    static PostProcessingShader (numBodies) {
+    static PostProcessingPlanetShader (numBodies) {
 
         const merged = UniformsUtils.mergeUniforms([
             {
@@ -119,8 +124,9 @@ class ShaderManager {
                 suns : { 
                     value : [
                         {
-                            color : new Color(255,255,255),
+                            color : new Color(1.0,1.0,1.0),
                             position : new Vector3(0,0,0),
+                            radius : 1.0,
                         }
                     ]
                 },
@@ -135,8 +141,38 @@ class ShaderManager {
 
         return {
             uniforms: merged,
-            vertexShader: ShaderManager.glslData.PPshader.shader.vertex,
-            fragmentShader: ShaderManager.glslData.PPshader.shader.fragment.replace("#define NUM_BODIES 10", `#define NUM_BODIES ${numBodies}`),
+            vertexShader: ShaderManager.glslData.PPshaderPlanet.shader.vertex,
+            fragmentShader: ShaderManager.glslData.PPshaderPlanet.shader.fragment.replace("#define NUM_BODIES 10", `#define NUM_BODIES ${numBodies}`),
+        };
+
+    }
+
+    static PostProcessingSunShader () {
+
+        const merged = UniformsUtils.mergeUniforms([
+            {
+                time: { type: "f", value: 1.0 },
+                IN_INV_PROJECTION_MATRIX : {value : new Matrix4()},
+                IN_INV_VIEW_MATRIX : {value : new Matrix4()},
+                suns : { 
+                    value : [
+                        {
+                            color : new Color(255,255,255),
+                            position : new Vector3(0,0,0),
+                            radius : 1.0,
+                        }
+                    ]
+                },
+                tDiffuse : { value: null },
+                tDepth : { value: null },
+                worldSpaceCamPos : {value : new Vector3(0,0,0)},
+            }
+        ]);
+
+        return {
+            uniforms: merged,
+            vertexShader: ShaderManager.glslData.PPshaderSun.shader.vertex,
+            fragmentShader: ShaderManager.glslData.PPshaderSun.shader.fragment,
         };
 
     }

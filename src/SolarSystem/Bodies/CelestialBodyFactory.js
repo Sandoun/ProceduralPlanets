@@ -14,6 +14,8 @@ export default class CelestialBodyFactory {
     maxMoonSizeOfParent = .75;
     minDistanceMoons = 20;
     maxDistanceMoons = 100;
+    minDistancePlanets = 70;
+    maxDistancePlanets = 150;
     moonOrbitPeriodSecondsMin = 60;
     moonOrbitPeriodSecondsMax = 60 * 10;
     maxAxisTilt = 15;
@@ -43,8 +45,9 @@ export default class CelestialBodyFactory {
         let parallelMethods = [];
         let generatedBodies = [];
 
-        const numOfPlanets = this.rngGen.nextInt(1, 1);
+        const numOfPlanets = this.rngGen.nextInt(1, 3);
         const numOfSuns = this.rngGen.nextInt(1, 1);
+        const baseOrbitalPeriod = this.rngGen.nextInt(this.moonOrbitPeriodSecondsMin, this.moonOrbitPeriodSecondsMax);
 
         let planetStartDist = 0;
 
@@ -67,12 +70,12 @@ export default class CelestialBodyFactory {
         for (let i = 0; i < numOfPlanets; i++) {
 
             //genrate N moons random
-            const nMoons = 1;
+            const nMoons = this.rngGen.nextInt(0, 2);
 
             //orbit offset from planet centre
-            const plOffset = this.rngGen.next(this.minDistanceMoons, this.maxDistanceMoons);
+            const plOffset = this.rngGen.next(this.minDistancePlanets, this.maxDistancePlanets);
             //orbital peroid in seconds
-            const plOrbitPeroidS = this.rngGen.nextInt(this.moonOrbitPeriodSecondsMin, this.moonOrbitPeriodSecondsMax);
+            const plOrbitPeroidS = baseOrbitalPeriod * (i + 1);
             //rand betweeen 0 and 360 deg
             const plStartAngleOffset = this.rngGen.next(0, 360);
             //probability of reverse orbit 20%
@@ -89,19 +92,16 @@ export default class CelestialBodyFactory {
                 planet.Generate();
             })());
 
-            const orb = this.solSystem.AttachOrbitingBody(planet, planetStartDist, plStartAngleOffset, plOrbitPeroidS, plReversedOrbit);
-            planet.ownOrbit = orb;
-            planet.indexOrbitalPlane = i;
-
             //build moons
             let moonStartDist = 0;
+            const moonBaseOrbitalPeriod = this.rngGen.nextInt(this.moonOrbitPeriodSecondsMin, this.moonOrbitPeriodSecondsMax);
 
-            for (let i = 0; i < nMoons; i++) {
+            for (let j = 0; j < nMoons; j++) {
 
                 //orbit offset from planet centre
                 const moonOffset = planet.settings.size.minimalCentre + this.rngGen.next(this.minDistanceMoons, this.maxDistanceMoons);
                 //orbital peroid in seconds
-                const moonOrbitPeroidS = this.rngGen.nextInt(this.moonOrbitPeriodSecondsMin, this.moonOrbitPeriodSecondsMax);
+                const moonOrbitPeroidS = moonBaseOrbitalPeriod * (j + 1);
                 //rand betweeen 0 and 360 deg
                 const moonStartAngleOffset = this.rngGen.next(0, 360);
                 //probability of reverse orbit 20%
@@ -121,16 +121,28 @@ export default class CelestialBodyFactory {
 
                 const orb = planet.AttachOrbitingBody(moon, planet, moonStartDist, moonStartAngleOffset, moonOrbitPeroidS, moonReversedOrbit);
                 moon.ownOrbit = orb;
-                moon.indexOrbitalPlane = i;
-                moon.name = `${planet.name} ${this.#romanize(i + 1)}`;
+                moon.indexOrbitalPlane = j;
+                moon.name = `${planet.name} ${this.#romanize(j + 1)}`;
+
+                //add last moon orbit to next planet starting dist
+                if(j == nMoons - 1) {
+
+                    planetStartDist += orb.distanceToCenter * 2;
+
+                }
 
             }
 
+            const orb = this.solSystem.AttachOrbitingBody(planet, planetStartDist, plStartAngleOffset, plOrbitPeroidS, plReversedOrbit);
+            planet.ownOrbit = orb;
+            planet.indexOrbitalPlane = i;
+
             planet.solSystem = this.solSystem;
             planet.GenerateOrbitRings();
-            this.solSystem.GenerateOrbitRings();
-
+            
         }
+
+        this.solSystem.GenerateOrbitRings();
 
         await Promise.all(parallelMethods);
         return generatedBodies;
@@ -151,8 +163,8 @@ export default class CelestialBodyFactory {
             water : undefined,
             biomes : undefined,
             rotation : {
-                periodSeconds : this.rngGen.next(-this.moonOrbitPeriodSecondsMax, this.moonOrbitPeriodSecondsMax),
-                axisTilt : this.rngGen.next(-this.maxAxisTilt, this.maxAxisTilt)
+                periodSeconds : this.rngGen.next(60, 120) * (this.rngGen.nextBoolean() ? -1 : 1),
+                axisTilt : 0
             }
         });
 
