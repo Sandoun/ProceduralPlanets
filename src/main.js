@@ -1,7 +1,7 @@
 import * as THREE from './Three/three.module.js';
 import { ShaderManager } from './SolarSystem/ShaderManager.js';
 import { OrbitControls } from './Three/OrbitControls.js';
-import { CelestialBody } from './SolarSystem/Bodies/CelestialBody.js';
+import { CelestialBody, Orbit } from './SolarSystem/Bodies/CelestialBody.js';
 import { EffectComposer } from './Three/Postprocessing/EffectComposer.js';
 import { RenderPass } from './Three/Postprocessing/RenderPass.js';
 import { ShaderPass } from './Three/Postprocessing/ShaderPass.js';
@@ -9,6 +9,7 @@ import GUI from './Three/lil-gui.esm.js';
 import SolarSystemRenderer from './SolarSystem/SolarSystemRenderer.js';
 import { UiManager } from './UserInterface/UiManager.js';
 import { WordGenerator } from './SolarSystem/WordGenerator.js';
+import CameraDriver from './SolarSystem/CameraDriver.js';
 
 window.addEventListener( 'resize', onWindowResize, false );
 
@@ -24,32 +25,44 @@ let composer;
 let solarSystem;
 /** @type {UiManager} */
 let uiManager;
-
-let startTime = Date.now();
+/** @type {CameraDriver} */
+let cameraDriver;
+/** @type {OrbitControls} */
+let controls;
+/** @type {THREE.Clock} */
+let clock = new THREE.Clock();
+let delta = 0;
 
 const gui = new GUI();
 
 let debugOptions = {
 
-  seed : "testseed",//Date.now().toString(), //,
+  seed : Date.now().toString(), //"testseed",
   speedMultiplicator : 1,
   showOrbits : true,
   regenerateAll : () => {
     GenerateSystem();
+  },
+  cycleCamera : () => {
+    cameraDriver.CycleCameraNextAnchor();
+  },
+  setFreeCamera : () => {
+    cameraDriver.SetFreeCamera();
   }
-
 };
 
 function SetupDebugUI () {
 
   gui.add( debugOptions, 'seed').onChange((x) => RebuildPlanet());
-  gui.add( debugOptions, 'speedMultiplicator', [0, .5, 1, 2, 10, 100]).onChange((x) => {
+  gui.add( debugOptions, 'speedMultiplicator', [0, .5, 1, 2, 10]).onChange((x) => {
     solarSystem.SetSpeedMultiplicator(x);
   });
   gui.add( debugOptions, 'showOrbits').onChange((x) => {
     solarSystem.SetAllOrbitsVisibility(x);
   });
   gui.add( debugOptions, 'regenerateAll');
+  gui.add( debugOptions, 'cycleCamera');
+  gui.add( debugOptions, 'setFreeCamera');
 
 }
 
@@ -72,14 +85,12 @@ function Main () {
 
   SetupRenderer();
 
-  //debug controls
-  const controls = new OrbitControls( camera, renderer.domElement );
-
   RenderDebug();
 
   GenerateSystem();
 
   uiManager = new UiManager(solarSystem);
+  cameraDriver.Start(solarSystem);
 
   animate();
 
@@ -103,10 +114,13 @@ function SetupRenderer () {
   renderer.setSize(defaultRendererW, defaultRendererH);
 
   camera = new THREE.PerspectiveCamera( 60, aspect, .1, 5000 );
-  camera.position.x = 200;
-  camera.position.y = 200;
-  camera.position.z = -200;
-  camera.lookAt(0,0,0);
+
+  //debug controls
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = .1;
+  cameraDriver = new CameraDriver(camera, controls);
+  cameraDriver.SetDefaultCamera();
 
   //post processing
   composer = new EffectComposer(renderer);
@@ -122,12 +136,15 @@ function SetupRenderer () {
 function animate() {
 
   requestAnimationFrame( animate );
+  delta = clock.getDelta();
 
-  solarSystem.OnAnimateLoop();
+  cameraDriver.OnAnimateLoop(delta);
+  if(controls.enabled) controls.update();
+  solarSystem.OnAnimateLoop(delta);
+  uiManager.OnFrameUpdate();
+
   renderer.render(scene, camera);
   composer.render();
-
-  uiManager.OnFrameUpdate();
 
 };
 
@@ -160,4 +177,3 @@ function GenerateSystem () {
   solarSystem.GenerateSystem();
 
 }
-

@@ -61,7 +61,7 @@ class CelboyUI {
         const worldPos = this.body.Object.getWorldPosition(new Vector3(0,0,1)).clone();
         const camWorldPos = camera.getWorldPosition(new Vector3(0,0,0));
         const dist = camWorldPos.distanceTo(worldPos);
-        const screenCoords = this.#WorldToScreenCoords(camera, this.body.maxSurfacePoint + 5, worldPos);
+        const screenCoords = this.#WorldToScreenCoords(camera, this.body.maxSurfacePoint + 1.5, worldPos);
 
         //hide if out of view
         const frustum = new Frustum()
@@ -140,7 +140,7 @@ export class PlanetInfo extends LitElement {
         }
         .rootdiv {
             position : absolute;
-            background : #303030;
+            background : #202020;
             color : white;
             border-radius: 1em;
             min-width: 18ch;

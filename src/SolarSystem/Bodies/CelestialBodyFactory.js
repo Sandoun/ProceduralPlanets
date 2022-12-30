@@ -3,6 +3,7 @@ import { Prando } from '../Prando.js';
 import greenlet from '../Greenlet.js';
 import { WordGenerator } from '../WordGenerator.js';
 import SolarSystemRenderer from "../SolarSystemRenderer.js";
+import { Color } from "../../Three/three.module.js";
 
 export default class CelestialBodyFactory {
 
@@ -163,7 +164,7 @@ export default class CelestialBodyFactory {
             water : undefined,
             biomes : undefined,
             rotation : {
-                periodSeconds : this.rngGen.next(60, 120) * (this.rngGen.nextBoolean() ? -1 : 1),
+                periodSeconds : this.rngGen.next(120, 600) * (this.rngGen.nextBoolean() ? -1 : 1),
                 axisTilt : 0
             }
         });
@@ -189,7 +190,7 @@ export default class CelestialBodyFactory {
                 waveLengthRed : this.rngGen.next(0,1500),
                 waveLengthGreen : this.rngGen.next(0,1000),
                 waveLengthBlue : this.rngGen.next(0,1000),
-                scatteringStrength : 1.0,
+                scatteringStrength : this.rngGen.next(1, 2),
                 scale : 1.0,
                 fallOff : this.rngGen.next(10, 40),
                 instensity : this.rngGen.next(1.0, 2.0),
@@ -263,64 +264,55 @@ export default class CelestialBodyFactory {
 
         const minCentre = this.rngGen.next(minS, maxS);
 
+        //biome generation
+        const numBiomes = this.rngGen.nextInt(1, 4);
+        const numGradients = this.rngGen.nextInt(2, 6);
+        let biomeLayers = [];
+        for (let i = 0; i < numBiomes; i++) {
+
+            let gradients = [];
+            for (let j = 0; j < numGradients; j++) {
+                const perc = j < numGradients - 1 ? j / numGradients : 1.0;
+                const col = this.#randomColorFromPaletteHeight(perc);
+                gradients.push(new GradientColorPoint(col.r, col.g, col.b, perc));
+            }
+
+            biomeLayers.push(
+                new BiomeData(gradients, i / numBiomes),
+            );
+
+        }
+
+        const hasAtmos = this.rngGen.nextInt(0, 100) < 33;
+
         let body = new CelestialBody({
             seed : this.rngGen.nextInt(0, Number.MAX_SAFE_INTEGER),
             size : {
                 resolution : Math.min(100, Math.floor(minCentre * 10)),
                 minimalCentre : minCentre,
             },
-            atmosphere : { 
+            atmosphere : hasAtmos ? { 
                 waveLengthRed : this.rngGen.next(0,1500),
                 waveLengthGreen : this.rngGen.next(0,1000),
                 waveLengthBlue : this.rngGen.next(0,1000),
-                scatteringStrength : 2.0,
+                scatteringStrength : this.rngGen.next(1, 2),
                 scale : 1.0,
                 fallOff : this.rngGen.next(10, 40),
-                instensity : this.rngGen.next(1.0, 2.0),
-            },
-            water : {
+                instensity : this.rngGen.next(.3, 2.0),
+            } : undefined,
+            water : hasAtmos && this.rngGen.nextInt(0, 100) < 33? {
                 levelOffset : this.rngGen.next(.2, .5)
-            },
+            } : undefined,
             biomes : {
-                noiseScale : .2,
-                noiseFrequency : .2,
-                blendingSize : 0.05,
-                layers : [
-                    new BiomeData([
-                        new GradientColorPoint(209,191,113,0),
-                        new GradientColorPoint(0,50,0,.4),
-                        new GradientColorPoint(15,112,0,.5),
-                        new GradientColorPoint(100,100,100,.85),
-                        new GradientColorPoint(255,255,255,.9),
-                        new GradientColorPoint(255,255,255,1.0),
-                    ], 0),
-                    new BiomeData([
-                        new GradientColorPoint(218, 194, 124, 0),
-                        new GradientColorPoint(215, 175, 114, .3),
-                        new GradientColorPoint(168, 101, 30, 1.0),
-                    ], .4),
-                    new BiomeData([
-                        new GradientColorPoint(209,191,113,0),
-                        new GradientColorPoint(0,50,0,.4),
-                        new GradientColorPoint(15,112,0,.5),
-                        new GradientColorPoint(100,100,100,.85),
-                        new GradientColorPoint(255,255,255,.9),
-                        new GradientColorPoint(255,255,255,1.0),
-                    ], .6),
-                    new BiomeData([
-                        new GradientColorPoint(209,191,113,0),
-                        new GradientColorPoint(0,50,0,.4),
-                        new GradientColorPoint(15,112,0,.5),
-                        new GradientColorPoint(100,100,100,.85),
-                        new GradientColorPoint(255,255,255,.9),
-                        new GradientColorPoint(255,255,255,1.0),
-                    ], .8),
-                    new BiomeData([
-                        new GradientColorPoint(255, 255, 255, 0),
-                        new GradientColorPoint(230, 230, 230, .3),
-                        new GradientColorPoint(255, 255, 255, 1.0),
-                    ], .9),
-                ],
+                noiseScale : this.rngGen.next(.1, 1.0),
+                noiseFrequency : this.rngGen.next(.1, 1.0),
+                blendingSize : this.rngGen.next(0.05, .5),
+                layers : biomeLayers,
+            },
+            terrain : {
+                persistence : this.rngGen.next(0.4, 0.6),
+                roughness : this.rngGen.next(1.5, 3.0),
+                strength : this.rngGen.next(.5, 1.0),
             },
             rotation : {
                 periodSeconds : this.rngGen.next(-this.moonOrbitPeriodSecondsMax, this.moonOrbitPeriodSecondsMax),
@@ -330,6 +322,55 @@ export default class CelestialBodyFactory {
 
         body.type = "Moon";
         return body;
+
+    }
+
+    #randomColor () {
+
+        const r =  this.rngGen.nextInt(0, 255); 
+        const g = this.rngGen.nextInt(0, 255);
+        const b = this.rngGen.nextInt(0, 255);
+
+        return new Color(r, g, b);
+
+    }
+
+    #randomColorFromPaletteHeight (height) {
+
+        const palettes = [
+            {
+                height : 0.1,
+                set : [
+                    new Color(124, 254, 240),
+                    new Color(255, 248, 232),  
+                    new Color(252, 213, 129),  
+                ],
+                height : 0.5,
+                set : [
+                    new Color(132, 113, 79),
+                    new Color(90, 58, 49),  
+                    new Color(49, 35, 30),  
+                    new Color(178, 103, 94),  
+                    new Color(187, 214, 134),  
+                    new Color(238, 241, 189),  
+                    new Color(254, 95, 85),  
+                ],
+                height : 1.0,
+                set : [
+                    new Color(249, 249, 249),
+                    new Color(78, 77, 92),  
+                    new Color(154, 3, 30),  
+                    new Color(203, 121, 58),
+                    new Color(205, 195, 146),  
+                    new Color(42, 127, 98),  
+                    new Color(70, 55, 48),  
+                ],
+            }
+        ];
+
+
+        const pal = palettes.filter(x => height <= x.height)[0];
+        return this.rngGen.nextArrayItem(pal.set);
 
     }
 

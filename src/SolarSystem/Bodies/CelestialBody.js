@@ -74,6 +74,7 @@ class CelestialBody {
      * @property {Object} rotation Rotation settings
      * @property {Number} rotation.axisTilt Axis tilt in degrees
      * @property {Number} rotation.periodSeconds Own rotation peroid in seconds
+     * @property {Number} rotation.periodStartAngle Start angle
      */
 
     /** @type {CelestialSettings} */
@@ -132,6 +133,7 @@ class CelestialBody {
         }, 
         rotation : {
             axisTilt : 15,
+            periodStartAngle : 0,
             periodSeconds : 10,
         }
     };
@@ -140,7 +142,7 @@ class CelestialBody {
     name;
 
     /** @type {('Generic'|'Sun'|'Planet'|'Moon')} Type of celestial body it is */
-    type;
+    type = "Generic";
 
     /** @type {Orbit} Own orbit of the body*/
     ownOrbit;
@@ -150,6 +152,15 @@ class CelestialBody {
 
     /** @type {Orbit[]} Orbits this body has */
     orbits = [];
+
+    /** @type {Object3D} Highest point on the cel body based on the terrain */
+    highestPointObj;
+
+    /** @type {Object3D} Lowest point on the cel body based on the terrain */
+    lowestPointObj;
+
+    /** @type {Boolean} True if the body has height terrain, false if flat */
+    hasHeightTerrain;
 
     /**
      * Initiates a new celestial body
@@ -194,6 +205,21 @@ class CelestialBody {
         this.minSurfacePoint = Number.MAX_SAFE_INTEGER;
         this.maxSurfacePoint = 0;
 
+        if(this.lowestPointObj) 
+            this.Object.remove(this.lowestPointObj);
+
+        if(this.highestPointObj) 
+            this.Object.remove(this.highestPointObj);
+
+        this.lowestPointObj = new Object3D();
+        this.highestPointObj = new Object3D();
+        this.Object.attach(this.lowestPointObj);
+        this.Object.attach(this.highestPointObj);
+
+        if(this.type != "Sun") {
+            this.hasHeightTerrain = true;
+        } 
+
         if(this.settings.water) {
             this.waterSurfacePoint = this.settings.size.minimalCentre + this.settings.water.levelOffset;
         } 
@@ -210,17 +236,17 @@ class CelestialBody {
         this.#render(merged);
         this.Object.attach(this.CurrentMesh);
 
-
     }
 
-    OnTimeUpdate (_t, _tDateBased) {
+    OnTimeUpdate (_tTotal) {
 
         //update time on shader
-        this.CurrentMesh.material.uniforms.time.value = _tDateBased;
+        this.CurrentMesh.material.uniforms.time.value = _tTotal * 1000;
 
         //let the body rotate
-        const rotAngle = _t / ((this.settings.rotation.periodSeconds * 1000) / 360) * -1;
-        this.Object.rotation.y = rotAngle * (Math.PI / 180);
+        const rotAngle = _tTotal / ((this.settings.rotation.periodSeconds) / 360) * -1;
+        const rotAngleRad = rotAngle * (Math.PI / 180);
+        this.Object.rotation.y = rotAngleRad;
         this.Object.rotation.x = this.settings.rotation.axisTilt * (Math.PI / 180);
 
         //let the moons orbit
@@ -230,9 +256,9 @@ class CelestialBody {
 
             //calc periodFactor
             if(orbit.isReversed) {
-                orbit.angle = _t / ((orbit.periodSeconds * 1000) / 360) * -1;
+                orbit.angle = _tTotal / ((orbit.periodSeconds) / 360) * -1;
             } else {
-                orbit.angle = _t / ((orbit.periodSeconds * 1000) / 360);
+                orbit.angle = _tTotal / ((orbit.periodSeconds) / 360);
             }
 
             const angleRadians = orbit.angle * (Math.PI / 180);
@@ -288,10 +314,12 @@ class CelestialBody {
                     this.minSurfacePoint = this.waterSurfacePoint;
                 } else if (pLen < this.minSurfacePoint) {
                     this.minSurfacePoint = pLen;
+                    this.lowestPointObj.position.set(pointOnSphere.x, pointOnSphere.y, pointOnSphere.z);
                 } 
                 
                 if(pLen > this.maxSurfacePoint) {
                     this.maxSurfacePoint = pLen;
+                    this.highestPointObj.position.set(pointOnSphere.x, pointOnSphere.y, pointOnSphere.z);
                 }
 
                 points.push(pointOnSphere);
@@ -519,9 +547,9 @@ class CelestialBody {
      * @param {Number} angle 
      * @returns {Orbit} the calculated orbit
      */
-    AttachOrbitingBody (body, parent, distanceToCenter, angle, periodSeconds, reversed) {
+    AttachOrbitingBody (body, parent, distanceToCenter, startAngle, periodSeconds, reversed) {
 
-        const orb = new Orbit(body, parent, distanceToCenter, angle, periodSeconds, reversed);
+        const orb = new Orbit(body, parent, distanceToCenter, 0, startAngle, periodSeconds, reversed);
         this.orbits.push(orb);
         return orb;
 
@@ -619,7 +647,7 @@ class GradientColorPoint {
 
 class Orbit {
 
-    constructor (body, parent, distCenter, angle, periodSeconds, reversed) {
+    constructor (body, parent, distCenter, angle, startAngle, periodSeconds, reversed) {
 
         /** @type {CelestialBody} */
         this.attachedBody = body;
@@ -632,6 +660,9 @@ class Orbit {
         
         /** @type {Number} */
         this.angle = angle;
+
+        /** @type {Number} */
+        this.startAngle = startAngle;
 
         /** @type {Number} */
         this.periodSeconds = periodSeconds;

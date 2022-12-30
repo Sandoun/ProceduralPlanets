@@ -67,12 +67,13 @@ export default class SolarSystemRenderer extends EventTarget {
     /**@type {ShaderPass} */
     sunPostShaderPass;
 
-    #lastDeltaTime = 0;
-
     #elapsedTimeTotal = 0;
 
     /** @type {Orbit[]} Orbits this body has */
     orbits = [];
+
+    /** @type {Vector3} current combined center of the suns */
+    centerMassPoint;
 
     /**
      * Sets up a new solar system renderer
@@ -112,26 +113,10 @@ export default class SolarSystemRenderer extends EventTarget {
     }
 
     
-    OnAnimateLoop () {
+    OnAnimateLoop (delta) {
 
-        const deltaThisCycle = Date.now();
-        const deltaTime = deltaThisCycle - this.#lastDeltaTime;
-
-        const elapsedMilliseconds = Date.now() - this.startTime;
-        //const multipliedSpeed = elapsedMilliseconds * this.speedMultiplicator;
-
-        this.#elapsedTimeTotal += deltaTime * this.speedMultiplicator;
-
-        this.#UpdateAtmosShaderPass();
-        this.#UpdateSunPostShaderPass(elapsedMilliseconds);
-        this.renderer.setRenderTarget(this.depthRenderTarget);
-
-        //render planet and others orbit
-
-        //let the body rotate
-        /* const rotAngle = _t / ((this.settings.rotation.periodSeconds * 1000) / 360) * -1;
-        this.Object.rotation.y = rotAngle * (Math.PI / 180);
-        this.Object.rotation.x = this.settings.rotation.axisTilt * (Math.PI / 180); */
+        const deltaSpeed = delta * this.speedMultiplicator;
+        this.#elapsedTimeTotal += deltaSpeed;
 
         //let the moons orbit
         for (let i = 0; i < this.orbits.length; i++) {
@@ -140,12 +125,12 @@ export default class SolarSystemRenderer extends EventTarget {
 
             //calc periodFactor
             if(orbit.isReversed) {
-                orbit.angle = this.#elapsedTimeTotal / ((orbit.periodSeconds * 1000) / 360) * -1;
+                orbit.angle += deltaSpeed / ((orbit.periodSeconds) / 360) * -1;
             } else {
-                orbit.angle = this.#elapsedTimeTotal / ((orbit.periodSeconds * 1000) / 360);
+                orbit.angle += deltaSpeed / ((orbit.periodSeconds) / 360);
             }
 
-            const angleRadians = orbit.angle * (Math.PI / 180);
+            const angleRadians = (orbit.angle + orbit.startAngle) * (Math.PI / 180);
             const newX = Math.cos(angleRadians) * orbit.distanceToCenter;
             const newY = Math.sin(angleRadians) * orbit.distanceToCenter;
             
@@ -185,11 +170,14 @@ export default class SolarSystemRenderer extends EventTarget {
                 body.CurrentMesh.material.uniforms.suns.value = this.shaderSunsStructs;
             }
 
-            body.OnTimeUpdate(this.#elapsedTimeTotal, elapsedMilliseconds);
+            body.OnTimeUpdate(this.#elapsedTimeTotal);
 
         }
 
-        this.#lastDeltaTime = deltaThisCycle;
+        this.renderer.setRenderTarget(this.depthRenderTarget);
+        this.#UpdateAtmosShaderPass();
+        this.#UpdateSunPostShaderPass(this.#elapsedTimeTotal * 1000);
+        
 
     }
 
@@ -289,7 +277,7 @@ export default class SolarSystemRenderer extends EventTarget {
 
             if(!body.settings.atmosphere) continue;
 
-            const bodyRadius = body.maxSurfacePoint;
+            const bodyRadius = body.maxSurfacePoint + .25;
 
             const r = body.settings.atmosphere.waveLengthRed;
             const g = body.settings.atmosphere.waveLengthGreen;
@@ -310,13 +298,13 @@ export default class SolarSystemRenderer extends EventTarget {
             for (let i = 0; i < this.shaderSunsStructs.length; i++) {
                 sunPositions.push(this.shaderSunsStructs[i].position);
             }
-            const centerMassPoint = SolarSystemRenderer.CalculateCenterOfMassPoints(sunPositions);
+            this.centerMassPoint = SolarSystemRenderer.CalculateCenterOfMassPoints(sunPositions);
 
             planetShadingStructs.push({
                 PlanetCentre : body.Object.position,
                 PlanetRadius : bodyRadius,
                 AtmosphereRadius : _atmoRadius,
-                DirToSun : centerMassPoint.sub(body.Object.position).normalize(),
+                DirToSun : this.centerMassPoint.clone().sub(body.Object.position).normalize(),
                 NumInScatteringPoints : 10,
                 NumOpticalDepthPoints : 10,
                 ScatteringCoefficients : _scatteringCoefficients,
@@ -425,7 +413,7 @@ export default class SolarSystemRenderer extends EventTarget {
      */
     AttachOrbitingBody (body, distanceToCenter, angle, periodSeconds, reversed) {
 
-        const orb = new Orbit(body, undefined, distanceToCenter, angle, periodSeconds, reversed);
+        const orb = new Orbit(body, undefined, distanceToCenter, 0, angle, periodSeconds, reversed);
         this.orbits.push(orb);
         return orb;
 

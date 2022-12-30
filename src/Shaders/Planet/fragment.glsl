@@ -50,7 +50,7 @@ vec3 calcOwnShadow (in vec3 normV, in vec3 baseColor) {
     vec3 norm = normalize(vNormal);
     vec4 viewLightPos = mViewMatrix * vec4(sourcePos, 1.0);
     vec3 lightVector = normalize(viewLightPos.xyz - vViewPosition);
-    float nDotL = clamp(dot(lightVector, norm), 0., 1.);
+    float nDotL = clamp(dot(lightVector, norm), 0.02, 1.);
 
     finalCol *= nDotL;
 
